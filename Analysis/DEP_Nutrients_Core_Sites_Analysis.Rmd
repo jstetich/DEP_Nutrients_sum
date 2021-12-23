@@ -1,0 +1,904 @@
+---
+title: "Analysis of Maine DEP Nutrient Data from Casco Bay"
+author: "Curtis C. Bohlen, Casco Bay Estuary Partnership."
+date: "04/26/2021"
+output:
+  github_document:
+    toc: true
+    fig_width: 5
+    fig_height: 4
+---
+
+<img
+    src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
+    style="position:absolute;top:10px;right:50px;" />
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align = 'center',
+                      fig.width = 5, fig.height = 4,
+                      collapse = TRUE, comment = "#>")
+```
+
+# Introduction
+This R Notebook focuses on analysis of patterns in nutrients concentrations, 
+especially total nitrogen, from a small number of "core" locations sampled
+by Maine DEP regularly in 2018, 2019, and 2020.  These sites are all found
+close to Portland, Maine.
+
+The focus is on documenting differences among sites, largely for display
+in simple graphics and maps. However, we use linear models and GAMS to check
+for seasonal patterns and correct for overall year to year variation, which we 
+(here) assume partially reflects weather and temporal autocorrelation among 
+sampling dates.
+
+All data is relatively recent, so we do not attempt any trend analysis.
+
+#Load Libraries
+```{r load_libraries}
+library(tidyverse)
+library(viridis)  # Normally not called directly, but we need it for the ternary
+                  # plot color scale.
+library(GGally)
+library(mgcv)
+library(emmeans)
+
+library(Ternary) # Base graphics ternary plots
+
+library(CBEPgraphics)
+load_cbep_fonts()
+theme_set(theme_cbep())
+```
+
+# Folder References
+```{r folder_refs}
+sibfldnm <- 'Derived_Data'
+parent <- dirname(getwd())
+sibling <- paste(parent,sibfldnm, sep = '/')
+
+dir.create(file.path(getwd(), 'figures'), showWarnings = FALSE)
+```
+
+# Load Data
+```{r load_data}
+dep_data <- read_csv(file.path(sibling, 'dep_nutrient_data.csv'),
+                     col_types = cols(
+                       .default = col_logical(),
+                       site_name = col_character(),
+                       site = col_character(),
+                       depth_designation = col_character(),
+                       dt = col_date(format = ""),
+                       month = col_character(),
+                       year = col_double(),
+                       time = col_time(format = ""),
+                       hour = col_double(),
+                       depth = col_double(),
+                       chl = col_double(),
+                       phaeo = col_double(),
+                       nox_n = col_double(),
+                       nh4_n = col_double(),
+                       tn = col_double(),
+                       op_p = col_double(),
+                       tp = col_double(),
+                       tss = col_double(),
+                       `Sample Comments` = col_character(),
+                       `Validation Comments` = col_character(),
+                       Latitude = col_skip(),
+                       Longitude = col_skip())) %>%
+  rename(sample_date = dt)
+```
+
+# Surface Data Only
+```{r surface_data}
+surface_data <- dep_data %>%
+  filter(depth <= 1) %>%
+  mutate(month = factor(month, levels = month.abb))%>%
+  mutate(yearf = factor(year)) %>%
+  mutate(doy = as.numeric(format(sample_date, format = '%j'))) %>%
+  relocate(yearf, doy, .after = year)
+```
+
+There are a few sky-high NH4 values, at nominal concentrations of 0.4 or 4.0 
+mg.l NH4-N.  All are flagged as "censored" (despite high values) and 
+carry annotations of excessive hold times.  We delete them.
+
+### Correct Misleading NH4 Values
+```{r drop_bad_NH4}
+surface_data <- surface_data %>%
+  mutate(nh4_n = if_else(nh4_n > 0.3, NA_real_, nh4_n))
+```
+
+### Add Shorter Site Names
+```{r add_site_names}
+site_names <- read_csv(file.path(sibling, "GIS", 'dep_locations.csv')) %>%
+  select(site, short_name)
+surface_data <- surface_data %>%
+  left_join(site_names, by = 'site') %>%
+  relocate(short_name, .after = site)
+```
+
+### Add DIN and Organic N
+We can calculate DIN as the sum of ammonium and nitrate, and organic N as the 
+difference between DIN and TN
+```{r calk_din_and_on}
+surface_data <- surface_data %>%
+  mutate(din = nh4_n + nox_n,
+         din_cens = nh4_n_cens | nox_n_cens,
+         din_flag = nh4_n_flag | nox_n_flag,
+         on       = tn - din,
+         on_flag  = din_flag | tn_flag,
+         on_cens_r  = din_flag)    #since this is calculated by difference
+```
+
+# Data Subsets
+## Core Sites Data
+```{r core_sites}
+core_sites <- surface_data %>%
+  select(site, year, din) %>%
+  filter(year == 2018) %>%
+  filter(! is.na(din)) %>%
+  select(-year, -din) %>%
+  unique %>%
+  arrange(site) %>%
+  pull
+core_sites
+```
+
+```{r core_subset}
+core_data <- surface_data %>%
+  filter(year > 2017) %>%
+  filter(site %in% core_sites) %>%
+  mutate(site = fct_reorder(factor(site), tn, na.rm = TRUE),
+         short_name = fct_reorder(factor(short_name), tn, na.rm = TRUE))
+```
+
+```{r cleanup}
+rm(surface_data)
+```
+
+# Summary of Metadata
+## QA/QC Samples
+We conducted no analysis of QA/QC samples, and simply deleted then from the data
+to avoid confusion.
+
+## Data Quality Flags and Censoring Flags
+While preparing our working data, we separated raw observations from text
+annotations, including data quality flags.  
+
+We had "J", 'J*", "B" and "JB" flags to contend with.  While the metadata we
+received from DEP did not include definitions of all flags, these are
+conventionally used to indicate that values are to be treated as "estimated
+values" because of uncertain precision, especially for values between instrument
+detection and contracted detection or quantitation limits.   Where data quality
+flags existed after deleting the QA/QC samples, we collapsed them down to a
+`TRUE` / `FALSE` flag indicating whether samples were flagged or not. These 
+flags follow a consistent naming convention, with the variable name followed by
+an underscore and "flag".
+
+We also had a few "U",  "U<" and ">" flags.  These represent censored values,
+either right censored ( ">") for Secchi depth, or left censored for other 
+parameters.  Again, we separated out a `TRUE` / `FALSE` flag to indicate
+censored values.  These flags also follow a consistent naming convention, with 
+the variable name followed by an underscore and "cens".
+
+## Units
+Our derived data sources lack clear indication of units, which were documented
+in the source Excel files.  We summarize relevant information here.
+
+Variable Name |  Meaning                 | Units                 |  
+--------------|--------------------------|-----------------------|  
+site_name     | DEP "Site ID"            |                       |  
+site          | DEP "Sample Point ID" without depth designation |    |  
+depth_designation | DEP depth designation from "Sample Point ID" | |
+sample_date   | Date of sample collection    | yyyy-mm-dd format     |
+month     | Month, derived from date     | Three letter codes    |
+year      | Year, derived from date      |                  |    |
+time      | time of sample               | 24 hour clock, hh:mm format |
+hour      | hour, derived from time      |                       |
+depth     | Sample Depth	               | Meters                |
+chl       |	Chlorophyll A, from "Chlorophyll A - Phaeophytin|  UG/L | |
+phaeo     | Phaeophytin                   | UG/L                 |
+nox_n     | Nitrate + Nitrite As N        | MG/L                 |
+nh4_n     | Ammonia as Nitrogen           | MG/L                 |
+tn        | Total Nitrogen                | MG/L                 |
+op_p      | Orthophosphate as Phosphorus  | MG/L                 |
+tp        | Total Phosphorus as P         | MG/L                 |
+tss       | Total Suspended Solids        | MG/L                 |
+secchi    | Secchi Depth                  | M                    |
+
+# Nitrogen
+## Pairs Plot
+```{r n_pairs}
+tmp <- core_data %>%
+  select(site, sample_date, nox_n:tp_flag) %>%
+  select(where(is.numeric))
+
+ggpairs(log(tmp), progress = FALSE)
+```
+
+### Ternary Diagrams
+```{r calc_proportions}
+proportion_data <- core_data %>%
+  select(site:hour, nox_n:tn_flag, din:on_cens_r) %>%
+  relocate(nh4_n, on, tn, .after = nox_n)%>%
+  mutate(across(nox_n:on, ~ .x/tn)) %>%
+  
+  relocate(nh4_n_flag, on_flag, tn_flag, .after = nox_n_flag) %>%
+  relocate(nh4_n_cens, on_cens_r, .after = nox_n_cens) %>%
+  
+  select(site, sample_date, year, nox_n:on_flag, ) %>%
+  filter(! is.na(nox_n), ! is.na(nh4_n), ! is.na(on))
+```
+
+#### Draft Plots
+We borrowed function to simply add alpha values to color palettes from here:
+[Description](https://www.r-bloggers.com/2014/03/colorramppalettealpha-and-addalpha-helper-functions-for-adding-transparency-to-colors-in-r/)
+[GitHub](https://github.com/mylesmharrison/colorRampPaletteAlpha/blob/master/colorRampPaletteAlpha.R)
+
+```{r transparency_fxn}
+addalpha <- function(colors, alpha=1.0) {
+  r <- col2rgb(colors, alpha=T)
+  # Apply alpha
+  r[4,] <- alpha*255
+  r <- r/255.0
+  return(rgb(r[1,], r[2,], r[3,], r[4,]))
+}
+```
+
+##### Colored by Censored and Flagged Data
+```{r ternary_data_quality, fig.width = 5, fig.height = 5}
+pal = addalpha(cbep_colors(), 0.5)
+
+TernaryPlot(alab = 'Nitrate + Nitrite', blab = 'Ammonium', clab = 'Other N',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, 
+              col = pal[as.numeric(proportion_data$on_flag | 
+                                     proportion_data$on_cens_r) + 1])
+
+legend('topleft', ncol = 1,
+        cex = .75,
+        legend = c('Data OK', 'Data Flag'),
+        box.lty = 0,
+        pch = 20,
+        col = cbep_colors())
+```
+
+##### Colored by Site
+```{r ternary_site, fig.width = 5, fig.height = 5}
+pal = viridis(9, alpha=0.5)
+
+TernaryPlot(alab = 'Nitrate + Nitrite', blab = 'Ammonium', clab = 'Other N',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, 
+              col = pal[as.numeric(proportion_data$site)])
+
+legend('topleft', ncol = 1,
+        cex = .75,
+        legend = levels(proportion_data$site),
+        box.lty = 0,
+        pch = 20,
+        col = pal)
+```
+
+##### Produce PDF
+We have slightly more control of size when we specify the graphics 
+device, as we can specify fonts and base font size.
+```{r ternary_pdf, fig.width = 3.5, fig.height = 3.5}
+cairo_pdf('figures/ternary_core.pdf', width = 3.5, height = 5,
+          family = 'Montserrat', pointsize = 8)
+
+TernaryPlot(alab = 'Nitrate + Nitrite', blab = 'Ammonium', clab = 'Other N',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, 
+              col = pal[as.numeric(proportion_data$site)])
+
+legend('topleft', ncol = 1,
+        cex = .75,
+        legend = levels(proportion_data$site),
+        box.lty = 0,
+        pch = 20,
+        col = pal)
+dev.off()
+```
+
+# Descriptive Statistics
+```{r core_results}
+core_results <- core_data %>%
+  group_by(site, short_name) %>%
+  summarize(across(c(nox_n, nh4_n, din, on, tn, chl, tss),
+                   .fns = c(mn = ~ mean(.x, na.rm = TRUE),
+                            sd = ~ sd(.x, na.rm = TRUE), 
+                            n = ~sum(! is.na(.x)),
+                            md = ~ median(.x, na.rm = TRUE),
+                            iqr = ~ IQR(.x, na.rm = TRUE),
+                            p90 = ~ quantile(.x, .9, na.rm = TRUE),
+                            gm = ~ exp(mean(log(.x), na.rm = TRUE)))),
+            .groups = 'drop') %>%
+  mutate(site = fct_reorder(factor(site), tn_md),
+         short_name = fct_reorder(factor(short_name), tn_md))
+```
+
+# DIN Analysis
+## Data Prevalence
+```{r din_data_months, fig.width = 7}
+xtabs(~ month + site, data = core_data, subset = ! is.na(din))%>%
+  as_tibble() %>%
+  mutate(month = factor(month, levels = month.abb)) %>%
+  filter(n>0) %>%
+
+  ggplot(aes(site, month, fill = n)) +
+  geom_tile() +
+  theme_cbep(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .25))
+```
+
+```{r din_data_years, fig.width = 7}
+xtabs(~ year + site, data = core_data, subset = ! is.na(din))%>%
+  as_tibble() %>%
+  filter(n>0) %>%
+
+  ggplot(aes(site, year, fill = n)) +
+  geom_tile() +
+  theme_cbep(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .25))
+```
+
+## Core Sites Data 2018-2020
+### Histograms / Distributions
+Data is distributed fairly close to log-normal, although it is slightly
+heavy tailed and more skewed.
+
+```{r din_hist}
+plt <- ggplot(core_data, aes(din)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  theme_cbep(base_size = 10) +
+  theme(legend.position = 'None')
+plt
+```
+
+```{r din_hists, fig.width = 7, fig.height = 5}
+plt +  facet_wrap (~site)
+```
+
+
+### Draft Graphic
+```{r din_graphic, fig.height = 4, fig.width = 5}
+ggplot(core_data, aes(din, short_name)) +
+  geom_point(aes(color = month)) +
+  scale_color_manual(values = cbep_colors2(), name = '') +
+  
+  geom_point(data = core_results, mapping = aes(x = din_md, y = short_name),
+             shape = 3, size = 2,
+             color = cbep_colors()[3]) +
+  
+  ylab('') +
+  xlab('Dissolved Inorganic Nitrogen (mg/l)') +
+  
+  theme_cbep(base_size = 12)  +
+  #theme(legend.position = 'None' )  +
+  scale_x_log10()
+  
+  
+ggsave('figures/din_by_site.pdf', device = cairo_pdf, width = 6, height = 4)
+```
+
+### Linear Models
+```{r din_lm_1}
+core_din_lm_full <- lm(log(din) ~ (site + month + yearf)^2, data = core_data)
+anova(core_din_lm_full)
+```
+
+```{r din_lm_2}
+core_din_lm <- step(core_din_lm_full)
+anova(core_din_lm)
+```
+
+So year to year variation is substantial, and should probably be addressed as a 
+random factor in a hierarchical model.  But this can also be treated as a source
+of additional error.
+
+```{r din_lm_3}
+core_din_lm_red <- lm(log(din) ~ site + month + year, data = core_data)
+anova(core_din_lm_red)
+```
+
+#### Marginal Means
+```{r din_lm_interaction_1}
+emmip(core_din_lm, site ~ yearf,
+      type = 'response')
+```
+
+```{r din_lm_interaction_2}
+emmip(core_din_lm, month ~ yearf,
+      type = 'response')
+```
+
+So, those interactions are unlikely to be due to "chance", but they well may be 
+due to annual or seasonal autocorrelations.  They so not dominate the patterns
+among sites, which is our focus here.  A hierarchical model would be better.
+For now, we advance with the reduced complexity model that omits the 
+interactions.
+
+```{r extract_din_lm_marginal_means}
+core_din_emms_lm <- emmeans(core_din_lm_red, 'site', type = 'response')
+```
+
+```{r plot_din_marginals}
+plot(core_din_emms_lm) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25)) +
+  geom_point(data = core_results, aes(y = site, x = din_mn),
+             color = 'red') +
+  geom_point(data = core_results, aes(y = site, x = din_gm),
+             color = 'yellow')
+```
+
+Differences between model predictions and observed means are almost entirely
+because the model is predicting geometric, not arithmetic means. The model's
+adjusted geometric means line up well with observed geometric means.
+
+#### Compare to Observed Means
+```{r compare_lm_observed}
+compare <- core_results %>%
+  select(site, short_name, din_mn, din_sd, din_n) %>%
+  full_join(core_din_emms_lm, by = 'site', suffix = c('.data', '.lm'), copy = TRUE)
+
+ggplot(compare, aes(din_mn, response)) +
+  geom_abline(slope = 1, intercept = 0) + 
+  geom_point(size = 3, color = 'blue') +
+  geom_linerange(aes(xmin = din_mn - 2 * din_sd/sqrt(din_n), 
+                     xmax = din_mn + 2 * din_sd/sqrt(din_n))) +
+  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL)) +
+  xlab('Observed ') +
+  ylab('Log Linear Model') +
+  coord_equal()
+```
+So, this model fits values slightly below observed values, as expected for
+geometric means of skewed data, which are slightly lower than arithmetic means.
+
+#### Model Diagnostics
+```{r din_lm_diagnostics}
+oldpar <- par(mfrow = c(2,2))
+plot(core_din_lm_red)
+par(oldpar)
+```
+
+The log transform here was a bit too strong, but the diagnostics are not 
+dreadful.
+
+### GAM Model
+```{r din_gam}
+core_din_gam <- gam(log(din) ~ site + s(doy, k = 5) + 
+                          s(yearf, bs = 're'), data = core_data)
+anova(core_din_gam)
+```
+
+```{r view_din_gam}
+plot(core_din_gam)
+```
+
+```{r din_gam_diagnostics}
+oldpar = par(mfrow = c(2,2))
+gam.check(core_din_gam)
+par(oldpar)
+```
+
+Those diagnostics are pretty good....
+
+#### Marginal Means
+The marginal means fit  with no specification for the day of year fills in the
+day of the year with the observed mean day of the year, Julian Day ~ 216, which
+is early August. That corresponds to roughly the lowest annual level for TN.
+
+The result is that the default marginal means are substantially lower than
+observed means and geometric means.  One can  ameliorate that by specifying 
+`cov.keep = 'doy`, which has the effect of averaging across all the actual dates 
+on which data was collected, or specifying `at = list(doy = c(seq(130,290,10))`,
+which averages over a regular grid of days of year across the sampling season.
+
+```{r extract_din_gam_marginal_means}
+emmeans(core_din_gam, 'site', nesting = NULL, type = 'response')
+emmeans(core_din_gam, 'site', cov.keep = 'doy', type = 'response')
+(core_din_emms_gam <- emmeans(core_din_gam, 'site', 
+                             at = list(doy = seq(130,290,10)),
+                             type = 'response'))
+```
+
+```{r plot_din_gam_marginals}
+plot(core_din_emms_gam) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25)) +
+  geom_point(data = core_results, aes(y = site, x = din_mn),
+             color = 'red') +
+  geom_point(data = core_results, aes(y = site, x = din_gm),
+             color = 'yellow')
+```
+Model Predictions are well below observed means.  It's not entirely clear....
+
+Differences between model predictions and observed means are almost entirely
+because the model is predicting geometric, not arithmetic means. The model's
+adjusted geometric means line up well with observed geometric means.
+
+#### Compare to Observed Means
+```{r compare_din_gam_observed}
+compare <- core_results %>%
+  select(site, short_name, din_mn, din_sd, din_n) %>%
+  full_join(core_din_emms_gam, by = 'site', suffix = c('.data', '.gam'), copy = TRUE)
+
+ggplot(compare, aes(din_mn, response)) +
+  geom_abline(slope = 1, intercept = 0) + 
+  geom_point(size = 3, color = 'blue') +
+  geom_linerange(aes(xmin = din_mn - 2 * din_sd/sqrt(din_n), 
+                     xmax = din_mn + 2 * din_sd/sqrt(din_n))) +
+  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL)) +
+  xlab('Observed ') +
+  ylab('Log Linear Model') +
+  coord_equal()
+```
+
+# TN Analysis
+## Core Sites Data 2018-2020
+### Histograms / Distributions
+Data is distributed fairly close to log-normal, although it is slightly
+heavy tailed and more skewed.
+
+```{r}
+plt <- ggplot(core_data, aes(tn)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  theme_cbep(base_size = 10) +
+  theme(legend.position = 'None') +
+  geom_vline(xintercept = 0.35, col = 'grey35') +
+  geom_vline(xintercept = 0.6, col = 'grey35')
+plt
+```
+
+The practical difference between eelgrass-oriented standards at about
+0.35 mg/l versus dissolved oxygen standards at about 0.6 mg/l could be huge.
+
+```{r tn_histograms}
+plt + facet_wrap(~site)
+```
+
+### Draft Graphic
+```{r tn_graphic, fig.height = 4, fig.width = 5}
+ggplot(core_data, aes(tn, short_name)) +
+  geom_point(aes(color = month)) +
+  scale_color_manual(values = cbep_colors2(), name = '') +
+  
+  geom_point(data = core_results, mapping = aes(x = tn_md, y = short_name),
+             shape = 3, size = 3,
+             color = cbep_colors()[3]) +
+  
+  ylab('') +
+  xlab('Total Nitrogen (mg/l)') +
+  
+  theme_cbep(base_size = 12)  +
+  #theme(legend.position = 'None' )  +
+  scale_x_log10()
+  
+  
+ggsave('figures/tn_by_site.pdf', device = cairo_pdf, width = 6, height = 4)
+```
+
+### Linear Models
+```{r tn_lm_1}
+core_tn_lm_full <- lm(log(tn) ~ (site + month + yearf)^2, data = core_data)
+anova(core_tn_lm_full)
+```
+
+```{r tn_lm_2}
+core_tn_lm <- step(core_tn_lm_full)
+anova(core_tn_lm)
+
+```
+
+```{r tn_lm_3}
+core_tn_lm_red <- lm(log(tn) ~ site + month + yearf, data = core_data)
+anova(core_tn_lm_red)
+```
+
+#### Marginal Means
+```{r tn_lm_interaction}
+emmip(core_tn_lm, month ~ yearf,
+      type = 'response')
+```
+
+So, those interactions are unlikely to be due to "chance", but they well may be 
+due to annual or seasonal autocorrelations.  A hierarchical model may be better.
+For now, we advance with the reduced complexity model that omits the interactions.
+
+```{r extract_tn_lm_marginal_means}
+core_tn_emms_lm <- emmeans(core_tn_lm_red, 'site', type = 'response')
+```
+
+```{r plot_tn_marginals}
+plot(core_tn_emms_lm) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25)) +
+  geom_point(data = core_results, aes(y = site, x = tn_mn),
+             color = 'red') +
+  geom_point(data = core_results, aes(y = site, x = tn_gm),
+             color = 'yellow')
+```
+
+The linear model does an excellent job of returning the observed geometric 
+means.
+
+#### Compare to Observed Means
+```{r compare_tn_lm_observed}
+compare <- core_results %>%
+  select(site, short_name, tn_mn, tn_sd, tn_n) %>%
+  full_join(core_tn_emms_lm, by = 'site', suffix = c('.data', '.lm'), copy = TRUE)
+
+ggplot(compare, aes(tn_mn, response)) +
+  geom_abline(slope = 1, intercept = 0) + 
+  geom_point(size = 3, color = 'blue') +
+  geom_linerange(aes(xmin = tn_mn - 2 * tn_sd/sqrt(tn_n), 
+                     xmax = tn_mn + 2 * tn_sd/sqrt(tn_n))) +
+  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL)) +
+  xlab('Observed ') +
+  ylab('Log Linear Model') +
+  coord_equal()
+```
+
+So, this model fits values slightly below observed values, as expected for
+geometric means of skewed data, which are slightly lower than arithmetic means.
+
+#### Model Diagnostics
+```{r tn_lm_diagnostics}
+oldpar <- par(mfrow = c(2,2))
+plot(core_tn_lm_red)
+par(oldpar)
+```
+
+Those look excellent.
+
+### GAM Model
+```{r tn_gam}
+core_tn_gam <- gam(log(tn) ~ site + s(doy, k = 4) + 
+                          s(yearf, bs = 're'), data = core_data)
+anova(core_tn_gam)
+```
+
+```{r view_tn_gam}
+plot(core_tn_gam)
+```
+
+```{r tn_gam_diagnostics}
+oldpar = par(mfrow = c(2,2))
+gam.check(core_tn_gam)
+par(oldpar)
+```
+
+#### Marginal Means
+The marginal means fit  with no specification for the day of year fills in the
+day of the year with the observed mean day of the year, Julian Day ~ 216, which
+is early August. That corresponds to roughly the lowest annual level for TN.
+
+The result is that the default marginal means are substantially lower than
+observed means and geometric means.  One can  ameliorate that by specifying 
+`cov.keep = 'doy`, which has the effect of averaging across all the actual dates 
+on which data was collected, or specifying `at = list(doy = c(seq(130,290,10))`,
+which averages over a regular grid of days of year across the sampling season.
+
+```{r extract_tn_gam_marginal_means}
+emmeans(core_tn_gam, 'site', nesting = NULL, type = 'response')
+emmeans(core_tn_gam, 'site', cov.keep = 'doy', type = 'response')
+(core_tn_emms_gam <- emmeans(core_tn_gam, 'site', 
+                             at = list(doy = seq(130,290,10)),
+                             type = 'response'))
+```
+```{r plot_tn_gam_marginals}
+plot(core_tn_emms_gam) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25)) +
+  geom_point(data = core_results, aes(y = site, x = tn_mn),
+             color = 'red') +
+  geom_point(data = core_results, aes(y = site, x = tn_gm),
+             color = 'yellow')
+```
+
+#### Compare to Observed Means
+```{r compare_tn_gam_observed}
+compare <- core_results %>%
+  select(site, short_name, tn_mn, tn_sd, tn_n) %>%
+  full_join(core_tn_emms_gam, by = 'site', suffix = c('.data', '.gam'), copy = TRUE)
+
+ggplot(compare, aes(tn_mn, response)) +
+  geom_abline(slope = 1, intercept = 0) + 
+  geom_point(size = 3, color = 'blue') +
+  geom_linerange(aes(xmin = tn_mn - 2 * tn_sd/sqrt(tn_n), 
+                     xmax = tn_mn + 2 * tn_sd/sqrt(tn_n))) +
+  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL)) +
+  xlab('Observed ') +
+  ylab('Log Linear Model') +
+  coord_equal()
+```
+
+Here the lower values from the GAM model are because we are implicitly comparing 
+estimated geometric means to arithmetic means.
+
+# N to P Ratios
+Generally, our N:P ratios are well below 15, suggesting continued N limitation.
+Is that worth reporting on?  There may be N:P ratio variation between sites.
+
+### Histograms / Distributions
+```{r n2p_histogram}
+core_data <- core_data %>%
+  mutate(n_to_p = tn/tp)
+```
+
+Data is somewhat skewed even after log transform.
+```{r n2p_histograms, fig.width = 7, fig.height = 5}
+plt <- ggplot(core_data, aes(n_to_p)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  theme_cbep(base_size = 10) +
+  theme(legend.position = 'None') +
+  geom_vline(xintercept = 15,col = 'grey35')
+
+plt +  facet_wrap (~site)
+```
+
+### Descriptive Statistics
+```{r core_n2p_results}
+core_n2p_results <- core_data %>%
+  group_by(site, short_name) %>%
+  summarize(across(c(tn, tp, n_to_p),
+                   .fns = c(mn = ~ mean(.x, na.rm = TRUE),
+                            sd = ~ sd(.x, na.rm = TRUE), 
+                            n = ~sum(! is.na(.x)),
+                            md = ~ median(.x, na.rm = TRUE),
+                            iqr = ~ IQR(.x, na.rm = TRUE),
+                            p90 = ~ quantile(.x, .9, na.rm = TRUE),
+                            gm = ~ exp(mean(log(.x), na.rm = TRUE)))),
+            .groups = 'drop') %>%
+  mutate(site = fct_reorder(factor(site), tn_md),
+         short_name = fct_reorder(factor(short_name), tn_md))
+```
+
+### Draft Graphic
+```{r n2p_graphic, fig.height = 4, fig.width = 5}
+ggplot(core_data, aes(n_to_p, short_name)) +
+  geom_point(aes(color = month)) +
+  scale_color_manual(values = cbep_colors2(), name = '') +
+  
+  geom_point(data = core_n2p_results, mapping = aes(x = n_to_p_md, y = short_name),
+             shape = 3, size = 2,
+             color = cbep_colors()[3]) +
+  
+  geom_vline(xintercept = 15, color = 'gray50', lty = 3) +
+  
+  ylab('') +
+  xlab('N to P Ratio') +
+  
+  theme_cbep(base_size = 12)
+
+ggsave('figures/n_to_p_by_site.pdf', device = cairo_pdf, width = 6, height = 4)
+```
+
+It's clear there is a seasonal pattern in N to P ratios.
+
+### GAM Model
+We are not fitting a year random effect here, because we have data from only 
+two years, and no reason to expect N:P ratios the vary systematically by year.
+
+```{r n2p_gam}
+core_n2p_gam <- gam(log(n_to_p) ~ site + s(doy, k = 4), data = core_data)
+anova(core_n2p_gam)
+```
+
+```{r view_n2p_gam}
+plot(core_n2p_gam)
+```
+
+Looks like a linear fit might work just about as well....
+
+```{r n2p_gam_diagnostics}
+oldpar = par(mfrow = c(2,2))
+gam.check(core_n2p_gam)
+par(oldpar)
+```
+
+Excellent diagnostics.
+
+#### Marginal Means
+```{r n2p_marginals}
+(core_n2p_emms_gam <- emmeans(core_n2p_gam, 'site', 
+                             at = list(doy = seq(130,290,10)),
+                             type = 'response'))
+(core_n2p_emms_gam_doy <- emmeans(core_n2p_gam, 'doy', 
+                                  at = list(doy = seq(130, 290, 10)),
+                             type = 'response'))
+```
+
+```{r plot_n2p_gam_marginals}
+plot(core_n2p_emms_gam) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25)) +
+  geom_point(data = core_n2p_results, aes(y = site, x = n_to_p_mn),
+             color = 'red') +
+  geom_point(data = core_n2p_results, aes(y = site, x = n_to_p_gm),
+             color = 'yellow')
+```
+
+The sites show statistically significant differences as a group, but with
+those large error bands, most pairwise comparisons will not be significant.
+
+```{r plot_n2p_gam_marginals_doy}
+plot(core_n2p_emms_gam_doy) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25))
+  
+```
+
+On the other hand, the is a strong N to p ratio pattern.  Since there is only a 
+little seasonal pattern in the N values, the P values must climb seasonally.
+
+# Phosphorus (A Few Graphics)
+```{r tp_histogram, fig.width = 7, fig.height = 5}
+ggplot(core_data, aes(tp)) + 
+  geom_histogram(aes(fill = site, color = tp_cens)) +
+  scale_color_manual(values = c('black', 'yellow')) + 
+  scale_x_log10()
+```
+
+So very little of the data is censored....
+
+```{r tp_plot}
+ggplot(core_data, aes(doy, tp)) + 
+  geom_point(aes(color = site)) +
+  geom_smooth() +
+  scale_color_viridis_d() +
+  scale_y_log10()
+```
+
+There is a clear seasonal pattern, with lots of scatter.
+
+# Chlorophyll and Phaeophytin (Graphics Only)
+This data does not include all chlorophyll data, because of ambiguities of 
+labeling in the source data.See "DEP_Nutrients_Preparation.Rmd" for details.
+```{r chl_pairs_plot}
+tmp <- core_data %>%
+  select(site, sample_date, chl, phaeo)
+
+tmp %>%
+  select(chl, phaeo) %>%
+  mutate(chl_to_p = chl / phaeo) %>%
+  mutate(across(everything(), log)) %>%
+  ggpairs(progress = FALSE)
+```
+
+We see a lot of samples with phaeophytin well above chlorophyll levels.
+that is not impossible, but noteworthy.  It's worth looking at the scatter plot
+with a 1:1 reference line. 
+
+```{r chl_scatter_plot}
+tmp <- core_data %>%
+  select(site, sample_date,
+         tn,
+         tp,
+         chl, phaeo,
+         chl_flag, phaeo_flag, 
+         chl_cens, phaeo_cens)
+
+ggplot(tmp, aes(chl, phaeo, color = site)) +
+  geom_point(aes(size = tn), alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0) +
+  scale_x_log10() + scale_y_log10() +
+  coord_equal() +
+  scale_color_viridis_d(name = '') +
+  theme_cbep(base_size = 12)
+```
+
+# Chlorophyll and Nutrients
+```{r chl_nutrients_pairs,  fig.width = 7, fig.height = 7}
+tmp <- core_data %>%
+  select(site, sample_date, chl, phaeo, op_p, tp, tn, din, on, tss)
+
+tmp %>%
+  select(-site, -sample_date) %>%
+  mutate(across(everything(), log)) %>%
+  ggpairs(progress = FALSE)
+```
+
+Interestingly, The strongest correlation between chlorophyll and nutrients is
+with TP, not TN....   Phaeophytin is correlated with Total N and organic N as
+well. Total suspended solids is  correlated with most metrics, suggesting it is
+functioning here as a surrogate for plankton abundance, which will be correlated
+with everything.

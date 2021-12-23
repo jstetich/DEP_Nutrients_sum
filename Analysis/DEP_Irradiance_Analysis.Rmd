@@ -1,0 +1,730 @@
+---
+title: "Initial Review of DEP Irradiance Data"
+author: "Curtis C. Bohlen, Casco Bay Estuary Partnership."
+date: "04/26/2021"
+output:
+  github_document:
+    toc: true
+    fig_width: 5
+    fig_height: 4
+---
+
+<img
+    src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
+    style="position:absolute;top:10px;right:50px;" />
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align = 'center',
+                      fig.width = 5, fig.height = 4,
+                      collapse = TRUE, comment = "#>")
+```
+
+# Introduction
+This notebook focuses on analysis of spatial and temporal patterns in light
+attenuation coefficients (k) calculated from Maine DEP irradiance data 
+Calculation of Light Attenuation Coefficients (k values), and analysis of spatial and 
+temporal patterns in light attenuation based on Maine DEP irradiance data.
+
+# Review of Theory
+Light attenuation is often measured as
+
+$$
+I_d = I_0 e^{-kz}
+$$
+Where $z$ is depth.
+
+$$
+\frac{I_d}{I_0} = e^{-kz}
+$$
+
+
+$$
+log(\frac{I_d}{I_0}) = -kz
+$$
+
+Note that this produces a value of k at each depth. If we assume light
+attenuation is vertically uniform (not unreasonable in our well mixed tidal
+waters), we can seek to estimate a single value of k across depths.
+
+$$ k \approx k_d = \frac{1}{-z} \times log(\frac{I_d}{I_0}) $$
+
+If we recast values as proportions of surface light intensity, I~0 is 1, by 
+definition, so we can estimate k~d as
+
+$$ k \approx k_d \approx - \frac{log(I_d)}{z}$$
+So, if we are comfortable with the assumption of well mixed surface waters, we
+can recast estimation of k as a linear regression problem, and aggregate data
+across multiple depths.
+
+Y = mx + b
+
+log(Id) = -kz + c
+
+So, k can be estimated as the negative of linear coefficient of depth in a 
+linear model.
+
+#Load Libraries
+```{r libraries}
+#library(readxl)
+library(tidyverse)
+
+library(GGally)
+library(emmeans)
+library(mgcv)
+
+library(CBEPgraphics)
+load_cbep_fonts()
+theme_set(theme_cbep())
+```
+
+# Load Data
+# Folder References
+```{r folder_refs}
+sibfldnm <- 'Derived_Data'
+parent <- dirname(getwd())
+sibling <- paste(parent,sibfldnm, sep = '/')
+
+#dir.create(file.path(getwd(), 'figures'), showWarnings = FALSE)
+```
+
+# Load Data
+We estimated light extinction coefficients based on DEP irradiance data,
+as the slope of linear regressions on log-transformed light intensity data.
+Standard errors are the standard errors of the slope estimates from those
+regressions. Details are available in the "DEP_Irradiance_Review.Rmd" file in
+the "Derived_Data" folder.  Here we only load the results.
+
+```{r load_data}
+k_data <- read_csv(file.path(sibling, 'light_extinction_data.csv')) %>%
+  mutate(yearf = factor(year))
+```
+
+# Reorder Site Factor by Mean k Values
+```{r reorder_site_factor}
+(my_lvls <- levels(fct_reorder(k_data$site, k_data$k_est, mean,  na.rm = TRUE)))
+
+k_data <- k_data %>%
+  mutate(site = factor(site, levels = my_lvls))
+```
+
+# Summary of Metadata
+## QA/QC Samples
+We conducted no analysis of QA/QC samples, and simply deleted then from the data
+to avoid confusion.
+
+## Censoring Flags
+While preparing our working data, we separated raw observations from text
+annotations, including data quality flags.  In the sonde-related data, we only
+had to contend with (1) left censoring of turbidity data, and (2) data quality 
+flags on all chlorophyll data.
+
+## Units
+Our derived data files lack an indication of units.  Units were documented
+in the source Excel files.  We summarize relevant information here.
+
+Variable Name |  Meaning                  | Units                |  
+--------------|---------------------------|----------------------|  
+site_name     | DEP "Site ID"             | Character string     |
+site          | DEP "Sample Point ID"     |  Character string    |  
+sample_date   | Date of sample collection | yyyy-mm-dd format    |
+year          | Year, derived from date   |                      |
+month         | Month, derived from date  | Three letter codes   |
+doy           | day of year (Julian day)  |                      |
+start_hour    | Hour light sampling began |                      |
+k_est         | Estimate of light extinction coefficient | 1 / m |
+k_se          | Standard error of that estimate, based on regression
+K_n           | Number of observations used to estimate k. |        |
+
+# Data Review
+## Identify Regularly Sampled Sites
+We make an assumption here that sampling on one day is all related.
+
+```{r high_data_sites}
+tmp <- k_data %>%
+  group_by(site, sample_date) %>%
+  summarize(was_sampled = sum(! is.na(k_est)) > 1,
+            .groups = 'drop')
+xt <- xtabs(~ sample_date + site, data = tmp)
+(tot <- colSums(xt))
+(preferred_sites <- names(tot[tot > 15]))
+```
+
+Note how few times most sites were sampled.  This makes seasonal patterns, 
+in particular, unstable, and so there is a trade off between analysis of all
+sites and the complexity of models the data can support.
+
+## Location-Scale Relationships
+```{r error_scales_with_estimate}
+ggplot(k_data, aes(k_est, k_se, color = k_n)) +
+  geom_point()
+```
+There is a strong location-scale relationship.  We have tighter estimates of k
+from sites and dates with low k conditions, while precision is much lower for
+sites with high k.  This presumably reflects either non-linearities in light
+extinction, or just higher variance in light measurements at lower light (higher
+k).
+
+The pattern is even clearer after log-log transform. (This is principally for 
+display purposes.  The log of the standard error is not the standard error of 
+the logs).
+
+```{r log_error_by_log_estimate}
+ggplot(k_data, aes(log10(k_est), log10(k_se), color = k_n)) +
+  geom_point()
+```
+
+There is a fair amount of scatter between estimated standard error at each
+K value.  The standard errors are usually about an order of magnitude to an 
+order of magnitude and a half smaller that the estimates, so we are talking
+about differences on the order of a factor of 10 to 50 times smaller than the
+estimates.  We may be able to get away with ignoring this in our analysis,
+but we should be aware that the problem exists.  If we ignore this variation in
+precision we will over-represent low-precision high values in any regression.
+
+Given the strong heteroskedasticity and scale-location relationship (even 
+after log transformation of the K data), simple linear regressions are 
+likely to be problematic.  Weighted analyses are likely to also be
+challenging, as it is not immediately obvious how to weight each estimate of
+k if we analyze log-transformed data, which appears essential here.
+
+## Means and SE of k by Site
+These are "raw" estimates and do not account for the uncertainty of individual
+estimates of K, as reflected in the standard errors  (`k_se`) in the data.
+
+```{r mean_k-by_site}
+k_means <- k_data %>%
+  group_by(site) %>%
+  summarize(site_name = first(site_name),
+            k_n_tot = sum(k_n),
+            k_vals  =  sum(! is.na(k_est)),
+            k_mean  = mean(k_est),
+            k_se    = sd(k_est)/sqrt(sum(! is.na(k_est)))) %>%
+  relocate(site_name)
+k_means
+```
+
+## Seasonal Patterns
+### Graphic
+```{r seasonal graphic_facets, fig.width = 7, fig.height = 6}
+ggplot(k_data, aes(doy, k_est)) +
+  geom_point(aes(color = factor(year))) +
+  #geom_smooth(method = 'gam', formula = y~ s(x)) +
+  #geom_linerange(aes(ymin = k_est - k_se, ymax = k_est + k_se)) +
+  scale_y_log10() +
+  scale_color_manual(values = cbep_colors()) +
+  theme_cbep(base_size = 10) +
+  facet_wrap("site")
+```
+
+## Initial Impressions
+Highest light attenuation occurs in the Royal River and Cousins River Sites.
+These are areas with  high levels of suspended sediments.  
+
+Most Fore River sites show low light attenuation. This presumably reflects the 
+high influence of offshore tidal waters on water quality around Portland.
+
+Time of year matters relatively little for most sites, but it does appear to be significant for some of the sites where we have more data, and (suspiciously)
+for a few where we have very little data.
+
+Seasonal patterns are not consistent among  sites. In most cases, light attenuation  drops slightly over the course of the summer. The upper Presumpscot River site shows an s shaped pattern with time of year, first increasing, then decreasing and leveling off.
+
+We can fit models looking at light attenuation coefficients by site, year and
+day of the year, but site PRV70 shows a complex seasonal pattern, while other
+sites do not appear to do so.  That forces any single large model that fully accommodates seasonal patterns to be fairly complex.  We focus on linear terms,
+even though that underfits the pattern occurring on the Presumpscot.
+
+# Analysis 
+## Strategy Questions
+We have two main considerations here:
+
+1.  Should we use weighted regressions?  We have standard error estimates for
+    each estimate of k, so in principle we can weight by the inverse of the
+    estimated variances.  But this faces some technical challenges.
+
+2.  Should we use hierarchical models, so we can "borrow" measures of
+    uncertainty from our better sampled sites to enhance uncertainty estimates 
+    for the less well studied sites?
+
+We test both approaches by looking only at sites for which we have substantial
+data.
+
+## Linear Models
+### Unweighted Models
+A log transform helps with model diagnostics, although it does not completely
+eliminate skewness in the residuals or a marked location-scale relationship.  We
+extract predicted values from this regression by back transforming from the log
+transform, thus making these location predictions akin to geometric means.
+
+```{r linear_model}
+lim_lm <- lm(log(k_est) ~ factor(year) +  doy + site + site:doy, data = k_data,
+             subset = site %in% preferred_sites)
+```
+
+```{r anova_lm}
+anova(lim_lm)
+```
+
+```{r summary}
+summary(lim_lm)
+```
+
+Overall, day of year is not a significant predictor of K, but it is a
+significant predictor at several Presumpscot River sites. (Analysis of all sites
+suggests that may be true of some other riverine sites too, but data is to
+limited at most sites to draw any conclusions (analysis not shown).
+
+In unweighted models, there is evidence for year to year variation.  There is a
+pattern with improving light penetration over the course of the year at some
+sites.  Because of uneven sampling, the sequential sums of squares are dependent
+on the sequence in which terms are entered into the models, but all terms are
+important.
+
+```{r diagnostics_lm}
+oldpar <- par(mfrow = c(2,2))
+plot(lim_lm)
+par(oldpar)
+```
+
+Model diagnostics are not great, although they are slightly better when based
+only on the sites with substantial data.  But all sites and preferred
+sites models show strong location-scale patterns.
+
+### Weighted Models
+In a conventional weighted linear model, we would weight observations by the 
+inverse of their estimated standard errors, but here we are taking the log
+transform of our estimates, and conducting regressions on those values.  If 
+we weight based on squared standard error, we will overstate uncertainty for
+our high uncertainty samples, especially the high K estimates.
+
+Ideally, we want to weight by the square of the estimated standard error of the 
+log of K.  We do not have that estimate, so we substitute the square of the log
+of the standard error of K. That is not a mathematical identity, but it should
+produce a weighted regression that performs better than using no weighting at 
+all.  An alternative would be to formally model the location-scale relationship,
+but I believe this makes better use of our knowledge of model uncertainty that
+underlies our estimates of k.
+
+```{r weighted_models}
+full_wlm <- lm(log(k_est) ~ factor(year) +  doy + site + site:doy, 
+              weights = 1/(log(k_se)^2), data = k_data)
+lim_wlm <- lm(log(k_est) ~ factor(year) +  doy + site + site:doy, 
+              weights = 1/(log(k_se)^2), data = k_data,
+             subset = site %in% preferred_sites)
+```
+
+```{r anova_wm}
+anova(lim_wlm)
+```
+
+```{r summary_wm}
+summary(lim_wlm)
+```
+
+The general conclusions are similar. Time of year matters at several our 
+riverine sites. Some years are better than others.  Sites differ, with sites influenced by freshwater likely to have higher light extinction coefficients.  (Notice that standard errors are slightly higher in this model, because of the weighting. That is expected)
+
+```{r diagnostics_wm}
+oldpar <- par(mfrow = c(2,2))
+plot(lim_wlm)
+par(oldpar)
+```
+
+Model diagnostics are perhaps slightly better, but still not great.  Residuals 
+tend to be larger (as expected). 
+
+#### Reduced Weighted Models
+We explore a model that omits the Day of Year. While day of the year is
+important in our models, it complicates presentation of results, and has only 
+modest effect on predictions of "typical" conditions at each site, which is our 
+main interest here.
+
+```{r small_weighted_model}
+small_wlm <- lm(log(k_est) ~ factor(year) +  site , 
+              weights = 1/(log(k_se)^2), data = k_data,
+              subset = site %in% preferred_sites)
+small_wlm_all <- lm(log(k_est) ~ factor(year) +  site , 
+              weights = 1/(log(k_se)^2), data = k_data)
+```
+
+```{r anova_sum_small_lm}
+anova(small_wlm)
+summary(small_wlm)
+```
+
+```{r diagnostics_small_lm}
+oldpar <- par(mfrow = c(2,2))
+plot(small_wlm)
+par(oldpar)
+```
+
+Model diagnostics are not great here either, although there are no points with 
+high leverage, the scale-location relationship is still strong.
+
+### "Adjusted" Means by Site
+```{r calc_marginal_means}
+emms_full <- emmeans(full_wlm, 'site', at = list(doy = 200), type = 'response')
+emms_small_all <- emmeans(small_wlm_all, 'site', at = list(doy = 200), 
+                       type = 'response')
+
+(emms_w <- emmeans(lim_wlm, 'site', at = list(doy = 200), type = 'response'))
+(emms_small <- emmeans(small_wlm, 'site', at = list(doy = 200), 
+                       type = 'response'))
+
+(emms_uw <- emmeans(lim_lm, 'site', at = list(doy = 200), type = 'response'))
+```
+
+All models are producing similar results.
+
+#### Importance of Interactions?
+We have to take the warnings about interactions seriously. The interaction
+is with day of the year. We can visualize the patterns like this.  (Adding
+standard errors to the plot makes it too complex to interpret, but SEs are 
+fairly large.  We have too little data for most sites to evaluate trend.)
+
+```{r interaction_plot}
+emmip(lim_wlm, site ~ doy, variable = 'doy', type = 'predict',
+      at = list(doy = seq(100, 300, by = 10)), CIs = FALSE) +
+  theme_cbep()
+```
+
+```{r marginal_trends}
+emtrends(lim_wlm, ~site, var = 'doy', type = 'predict',
+      at = list(doy = seq(100, 300, by = 10))) %>%
+  as_tibble() %>%
+  arrange(doy.trend)
+```
+
+Remember that sites are ordered by mean k value, so values are highest at the 
+Presumpscot stations, and lowest at the Fore River station.
+
+The Presumpscot River stations see improvements in light penetration over the
+course of the spring and summer. They are among our sites with the highest k
+values, and remain so regardless of time of year.  (Rank order of sites changes
+little over the course of the year.) The interaction does not qualitatively
+change our understanding.
+
+Unfortunately, for most sites (not shown in this restricted data set), we have
+data from too few dates for seasonal relationships to be taken seriously.  A
+few sites show apparent seasonal trends, based on just a handful of dates from
+one year. While those sites influence model selection, the reality is, the
+trends can't be trusted.  We need to leave those sites out
+of any analysis that looks at seasonal patterns.
+
+This model left out nonlinearities in response to day of year response at PRV70,
+hiding a seasonal pattern there.
+
+```{r plot_emm_full}
+plot(emms_w) + 
+  theme(axis.text.x = element_text(size = 12, angle = 90, vjust = 0.25)) +
+  xlab('k (1/m)') +
+  ylab('') +
+  coord_flip()
+```
+
+```{r plot_emm_small}
+plot(emms_small) +
+  theme(axis.text.x = element_text(size = 12, angle = 90, vjust = 0.25)) +
+  xlab('k (1/m)') +
+  ylab('') +
+  coord_flip()
+```
+
+There is no apparent difference in the qualitative meaning we might draw from
+these two models.  We can look more closely by formally comparing model
+predictions and "marginal means".
+
+### Compare Marginal and Observed Means
+#### Unweighted to Observed
+```{r compare_unweighted}
+results <- as_tibble(emms_uw) %>%
+  left_join(k_means, by = 'site') %>%
+  rename(em_mn = response,
+         em_se = SE,
+         k_mn = k_mean,
+         k_se = k_se)
+
+ggplot(results, aes(k_mn, em_mn)) +
+  geom_point() +
+  geom_text(aes(label = site), nudge_x = 0.1, size = 2) +
+  geom_linerange(aes(ymin = em_mn - em_se, ymax = em_mn + em_se )) +
+  geom_linerange(aes(xmin = k_mn - k_se, xmax = k_mn + k_se )) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlab('Simple Means') +
+  ylab('Estimated Marginal Means') +
+  coord_equal() +
+  ggtitle('Unweighted Regression') +
+  theme_cbep(base_size = 12)
+```
+
+The primary effect of using marginal means from a regression model is to narrow
+the standard errors. 
+
+#### Weighted to Observed
+```{r compare_weighted}
+results <- as_tibble(emms_w) %>%
+  left_join(k_means, by = 'site') %>%
+  rename(em_mn = response,
+         em_se = SE,
+         k_mn = k_mean,
+         k_se = k_se)
+
+ggplot(results, aes(k_mn, em_mn)) +
+  geom_point() +
+  geom_text(aes(label = site), nudge_x = 0.1, size = 2) +
+  geom_linerange(aes(ymin = em_mn - em_se, ymax = em_mn + em_se )) +
+  geom_linerange(aes(xmin = k_mn - k_se, xmax = k_mn + k_se )) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlab('Simple Means') +
+  ylab('Estimated Marginal Means') +
+  coord_equal() +
+  ggtitle('Weighted Regression') +
+  theme_cbep(base_size = 12)
+```
+
+Weighted models downweights the higher k sites, which had higher uncertainty in
+the source regressions. The weighted regression does not match the observed
+means as closely as the unweighted regression at the higher end.  That is
+expected, and a direct -- and not unreasonable -- consequence of weighting.
+
+#### Small Model to Observed
+```{r compare_small}
+results <- as_tibble(emms_small) %>%
+  left_join(k_means, by = 'site') %>%
+  rename(em_mn = response,
+         em_se = SE,
+         k_mn = k_mean,
+         k_se = k_se)
+
+ggplot(results, aes(k_mn, em_mn)) +
+  geom_point() +
+  geom_text(aes(label = site), nudge_x = 0.15, size = 2) +
+  geom_linerange(aes(ymin = em_mn - em_se, ymax = em_mn + em_se )) +
+  geom_linerange(aes(xmin = k_mn - k_se, xmax = k_mn + k_se )) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlab('Simple Means') +
+  ylab('Estimated Marginal Means') +
+  coord_equal() +
+  ggtitle('Smaller Model') +
+  theme_cbep(base_size = 12)
+```
+Dropping the Day of the Year term makes almost no difference.  We make that
+point even more strongly in the next figure.
+
+### Compare Model Results
+#### Full Weighted Model to Small Model
+```{r compare_small_large}
+results <- as_tibble(emms_w) %>%
+  left_join(as_tibble(emms_small), by = 'site') %>%
+  rename(w_est = response.x,
+         w_se = SE.x,
+         small_est = response.y,
+         small_se =SE.y)
+
+ggplot(results, aes(w_est, small_est)) +
+  geom_point() +
+  geom_text(aes(label = site), nudge_x = 0.1, size = 2) +
+  geom_linerange(aes(ymin = small_est - small_se, ymax = small_est + small_se)) +
+  geom_linerange(aes(xmin = w_est - w_se, xmax = w_est + w_se )) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlab('Larger Model') +
+  ylab('Smaller Model') +
+  coord_equal() +
+  ggtitle('Compare With and Without DOY') +
+  theme_cbep(base_size = 12)
+```
+
+Very little difference.
+
+#### Weighted to Unweighted Models
+```{r compare_weighted_unweighted}
+results <- as_tibble(emms_w) %>%
+  left_join(as_tibble(emms_uw), by = 'site') %>%
+  rename(w_est = response.x,
+         w_se = SE.x,
+         uw_est = response.y,
+         uw_se =SE.y)
+
+ggplot(results, aes(w_est, uw_est)) +
+  geom_point() +
+  geom_text(aes(label = site), nudge_x = 0.1, size = 2) +
+  geom_linerange(aes(ymin = uw_est - uw_se, ymax = uw_est + uw_se)) +
+  geom_linerange(aes(xmin = w_est - w_se, xmax = w_est + w_se )) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlab('Weighted Model') +
+  ylab('Unweighted Model') +
+  coord_equal() +
+  ggtitle('Compare Weighted to Unweighted') +
+  theme_cbep(base_size = 12)
+```
+
+The weighted model alters estimates slightly, (Leading to slightly lower
+estimates of means) but it makes no real difference to qualitative conclusions.
+
+
+So  For the sites where have substantial data:  
+1.  The "adjusted" marginal means (of several log models) are very close to the 
+    raw means.  
+2.  Rank order of sites is basically unchanged under any of the models.  
+3.  Errors from the models are smaller than the standard error of the 
+    means.  
+4.  The weighted regression model produces estimates close to observed
+    means for medium and small values, but does not do as well at large values.  
+5.  Models with and without a Day of the Year term generate similar qualitative
+    results.  
+5.  We have a remaining location-scale relationship, which makes these models
+    somewhat suspect for estimating standard errors. There is little we can do
+    with a conventional linear model to address that.  
+
+### Hierarchical Model
+We would like to map sites by k value using GIS. We want to compare all sites
+for which we have data, including those for which we have limited data, despite
+different sampling histories. Hierarchical models are a good way to go.  By
+treating year as a random factor, we can effectively borrow information from
+other sites to estimate long-term "typical" condition for sites that were
+sampled rarely, while correcting for any bias introduced by having data from
+only some years.
+
+We chose to omit consideration of seasonal pattern, largely because the data is 
+too sparse at most sites to evaluate a full seasonal model  We are leaving out
+a known source of variation by doing so, but the previous analysis showed
+that the effect is small compared do differences between sites, which is our 
+focus here.
+
+We rely on the `mgcv` package.  It provides a convenient approach to
+simple hierarchical modeling, by specifying a hierarchical model via a 
+"random effects" smoother, via `s(x, bs = 're')`.
+
+```{r hierarchical_model}
+the_hmod <- gam(log(k_est) ~ site +  s(yearf, bs = 're'),
+                 data = k_data,
+              weights = 1/(log(k_se)^2) )
+```
+
+```{r anova_hm}
+anova(the_hmod)
+```
+
+```{r diagnostics_hm}
+oldpar <- par(mfrow = c(2,2))
+gam.check(the_hmod)
+par(oldpar)
+```
+
+This model performs slightly better than the basic linear models did.
+Residuals are still moderately skewed, and we see a bit of what may be a
+remaining scale-location relationship.  But the diagnostics are not dreadful.
+
+### Results
+```{r marginal_means_hm}
+(emms_hm <- emmeans(the_hmod, 'site', at = list(doy = 200), type = 'response'))
+```
+
+Note that the hierarchical model allows us to estimate means and standard errors 
+for all sites, even those with data from only a single year.  Those estimates
+should be viewed with skepticism, but they are better than no estmates at all.
+
+#### Compare Hierarchical Model To Weighted Linear Model
+```{r compare_hm_to wm}
+results <- as_tibble(emms_small_all) %>%
+  left_join(as_tibble(emms_hm), by = 'site') %>%
+  rename(lm_est = response.x,
+         lm_se = SE.x,
+         hm_est = response.y,
+         hm_se =SE.y)
+
+ggplot(results, aes(lm_est, hm_est)) +
+  geom_point() +
+  geom_text(aes(label = site), nudge_x = 0.15, size = 2) +
+  geom_linerange(aes(ymin = hm_est - hm_se, ymax = hm_est + hm_se)) +
+  geom_linerange(aes(xmin = lm_est - lm_se, xmax = lm_est + lm_se )) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlab('Full Model') +
+  ylab('Hierarchical Model') +
+  coord_equal() +
+  ggtitle('Compare Hierarchical Model') +
+  theme_cbep(base_size = 12)
+```
+
+The hierarchical model produces predictions very similar to a non-hierarchical
+model. (In other analysis, we identified that including a DOY term strongly
+biases estimates of marginal means at CR-44, where three K values suggest a very
+steep and implausible seasonal trend. Graphic not shown.)
+
+# Save Results
+We conclude that the Hierarchical (and weighted) model provides the best summary 
+of the data for mapping purposes.  We assemble a data frame with the observed
+means and standard errors, and estimated marginal means and standard errors from
+the hierarchical model.
+```{r assemble_results}
+results <- as_tibble(emms_hm) %>%
+  left_join(k_means, by = 'site') %>%
+  rename(em_mn = response,
+         em_se = SE,
+         light_observs = k_n_tot,
+         k_observs = k_vals) %>% 
+  relocate(site, site_name, k_mean, k_se, k_observs, light_observs)
+```
+
+# Consider Robust Linear Models Instead?
+The function `rlm()` fro, `MASS` may handle the location-scale problems better.
+
+# Export Results for GIS
+```{r save_results}
+write_csv(results, file.path(sibling, 'k_summary_by_site.csv') )
+```
+
+# Draft Graphics
+With the analysis in hand, we can see that different models have relatively low
+impact on predictions.  The primary value of these models will be in estimating
+standard errors in ways that allow us to lean on data from sites with more data
+to help constrain variability at sites where we lack data. The best way to look
+at that will be through very simple hierarchical models that treat year as a
+random variable.
+ 
+## Point Chart Based on Observed Means
+```{r point_chart_observed}
+k_means %>%
+  mutate(site = fct_reorder(site, k_mean)) %>%
+  ggplot(aes(site, k_mean)) +
+  geom_pointrange(aes(ymin = k_mean - 2 * k_se, ymax = k_mean + 2 * k_se),
+                  size = .75, color = cbep_colors()[5]) +
+  geom_point(data = k_data,  mapping = aes(site, k_est), alpha = 0.25) +
+  
+  theme_cbep(base_size = 12) +
+  ylab(expression(paste('k (',  m^-1, ')', sep = ''))) +
+  xlab('') +
+  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25))
+```   
+
+## Point Chart based on Hierarchical Models
+```{r point_chart_marginal}
+results %>%
+  mutate(site = fct_reorder(site, em_mn)) %>%
+  ggplot(aes(site, em_mn)) +
+ 
+  geom_pointrange(aes(ymin = lower.CL, ymax = upper.CL),
+                  size = .75, color = cbep_colors()[5]) +
+  geom_point(data = k_data,  mapping = aes(site, k_est), alpha = 0.25) +
+  
+  theme_cbep(base_size = 12) +
+  ylab(expression(paste('k (',  m^-1, ')', sep = ''))) +
+  xlab('') +
+  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25))
+```
+
+## Bar Chart From Hierarchical Model
+```{r bar_chart_marginal}
+results %>%
+  mutate(site = fct_reorder(site, em_mn)) %>%
+  ggplot(aes(site, em_mn)) +
+  geom_col(fill = cbep_colors()[4]) +
+  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL)) +
+  
+  theme_cbep(base_size = 12) +
+  ylab(expression(paste('k (',  m^-1, ')', sep = ''))) +
+  xlab('Station') +
+  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25))
+```

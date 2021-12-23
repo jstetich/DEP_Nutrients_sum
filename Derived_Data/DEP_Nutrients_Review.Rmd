@@ -1,0 +1,432 @@
+---
+title: "Initial Review of Friends of Casco Bay Nutrient Data"
+author: "Curtis C. Bohlen, Casco Bay Estuary Partnership."
+date: "04/26/2021"
+output:
+  github_document:
+    toc: true
+    fig_width: 5
+    fig_height: 4
+---
+
+<img
+    src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
+    style="position:absolute;top:10px;right:50px;" />
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align = 'center',
+                      fig.width = 5, fig.height = 4,
+                      collapse = TRUE, comment = "#>")
+```
+
+# Introduction
+This R Notebook focuses on continued review of contents of the DEP nutrient 
+data.  We focus here on data on concentration of nitrogen species, and examine 
+the spatial and temporal distribution of data.
+
+#Load libraries
+```{r}
+#library(readxl)
+library(tidyverse)
+
+library(GGally)
+#library(mgcv)
+
+library(Ternary) # Base graphics ternary plots
+
+
+library(CBEPgraphics)
+load_cbep_fonts()
+theme_set(theme_cbep())
+```
+
+# Load Data
+```{r}
+dep_data <- read_csv('dep_nutrient_data.csv',
+                     col_types = cols(
+                       .default = col_logical(),
+                       site_name = col_character(),
+                       site = col_character(),
+                       depth_designation = col_character(),
+                       dt = col_date(format = ""),
+                       month = col_character(),
+                       year = col_double(),
+                       time = col_time(format = ""),
+                       hour = col_double(),
+                       depth = col_double(),
+                       chl = col_double(),
+                       phaeo = col_double(),
+                       nox_n = col_double(),
+                       nh4_n = col_double(),
+                       tn = col_double(),
+                       op_p = col_double(),
+                       tp = col_double(),
+                       tss = col_double(),
+                       `Sample Comments` = col_character(),
+                       `Validation Comments` = col_character(),
+                       Latitude = col_skip(),
+                       Longitude = col_skip())) %>%
+  rename(sample_date = dt)
+```
+
+# Summary of Metadata
+## QA/QC Samples
+We conducted no analysis of QA/QC samples, and simply deleted then from the data
+to avoid confusion.
+
+## Data Quality Flags and Censoring Flags
+While preparing our working data, we separated raw observations from text
+annotations, including data quality flags.  
+
+We had "J", 'J*", "B" and "JB" flags to contend with.  While the metadata we
+received from DEP did not include definitions of all flags, these are
+conventionally used to indicate that values are to be treated as "estimated
+values" because of uncertain precision, especially for values between instrument
+detection and contracted detection or quantitation limits.   Where data quality
+flags existed after deleting the QA/QC samples, we collapsed them down to a
+`TRUE` / `FALSE` flag indicating whether samples were flagged or not. These 
+flags follow a consistent naming convention, with the variable name followed by
+an underscore and "flag".
+
+We also had a few "U",  "U<" and ">" flags.  These represent censored values,
+either right censored ( ">") for Secchi depth, or left censored for other 
+parameters.  Again, we separated out a `TRUE` / `FALSE` flag to indicated 
+censored values.  These flags also follow a consistent naming convention, with 
+the variable name followed by an underscore and "cens".
+
+## Units
+Our derived data sources lack clear indication of units, which were documented
+in the source Excel files.  We summarize relevant information here.
+
+Variable Name |  Meaning                 | Units                 |  
+--------------|--------------------------|-----------------------|  
+site_name     | DEP "Site ID"            |                       |  
+site          | DEP "Sample Point ID" without depth designation |    |  
+depth_designation | DEP depth designation from "Sample Point ID" | |
+sample_date   | Date of sample collection    | yyyy-mm-dd format     |
+month     | Month, derived from date     | Three letter codes    |
+year      | Year, derived from date      |                  |    |
+time      | time of sample               | 24 hour clock, hh:mm format |
+hour      | hour, derived from time      |                       |
+depth     | Sample Depth	               | Meters                |
+chl       |	Chlorophyll A, from "Chlorophyll A - Phaeophytin|  UG/L | |
+phaeo     | Phaeophytin                   | UG/L                 |
+nox_n     | Nitrate + Nitrite As N        | MG/L                 |
+nh4_n     | Ammonia as Nitrogen           | MG/L                 |
+tn        | Total Nitrogen                | MG/L                 |
+op_p      | Orthophosphate as Phosphorus  | MG/L                 |
+tp        | Total Phosphorus as P         | MG/L                 |
+tss       | Total Suspended Solids        | MG/L                 |
+secchi    | Secchi Depth                  | M                    |
+
+## Cross Occurrances of Data
+We are interested in figuring out what data occurs with other data.  A giant
+`xtab()` is possible, but unwieldy for more than three variables.
+
+We instead reducing all VARIABLES to the value 1 if data exists, and zero
+otherwise.  We then look at correlations between data categories.
+
+```{r}
+tmp <- dep_data %>%
+  select(chl:tss) %>%
+  select_if(is.numeric) %>%
+  mutate(across(everything(), ~ as.numeric( ! is.na(.x))))
+round(cor(tmp, use = 'pairwise'),2)
+```
+
+# Depth Distribution of Samples
+```{r}
+ggplot(dep_data, aes(depth)) + geom_histogram(binwidth = 1)
+```
+So we still need to worry about depths. 
+
+```{r}
+tmp <- dep_data %>%
+  mutate(dclass = cut(depth,c(0,1,2, 5, 20)))
+         
+ xtabs(~ dclass + depth_designation, data = tmp, addNA = TRUE)
+```
+
+So overall, it looks like the depth designations are *almost* consistent.
+There are nine samples that lack a depth designation that were collected 
+at depth.  These are likely to be bottom samples, as all have depth reported as 
+over 10 meters.  We treat them as such here, and give them the depth designation 
+of "bot" (lowercase) so we remember that the designation has been added, and 
+was not part of the original data.
+
+```{r}
+dep_data %>%
+  filter(depth > 5, is.na(depth_designation))
+```
+
+```{r}
+dep_data <- dep_data %>%
+  mutate(depth_designation = if_else(depth > 5 & is.na(depth_designation),
+                                     'bot', depth_designation))
+
+tmp <- dep_data %>%
+  mutate(dclass = cut(depth,c(0,1,2, 5, 20)))
+xtabs(~ dclass + depth_designation, data = tmp, addNA = TRUE)
+```
+
+There are VERY few samples collected at maximum chlorophyll, so these
+data are not be of much use.
+
+# Surface Data Only
+## Nutrients
+```{r}
+surface_data <- dep_data %>%
+  filter(depth_designation == 'SUR' | is.na(depth_designation))
+```
+
+
+There are a few sky-high NH4 values.  Let see where they occurred.
+
+```{r}
+surface_data %>%
+  filter(nh4_n > 2.5)
+```
+
+All have identical values of NH$  = 4, and all are flagged as being outside of 
+normal hold times, and all had flags indicating they are censored as "<4" these
+are probably best handled as missing data, so we delete the nh4-n data.
+
+We have a few more NH4 values at `nh4_n == 0.4`, which are 
+clearly also oddballs.
+
+```{r}
+surface_data %>%
+  filter(nh4_n < 2.5, nh4_n > 0.3)
+```
+
+Again, all have identical values of 0.4, all are flagged as censored, and 
+all are flagged as being outside of hold times.
+
+### Correct Misleading NH4 values
+```{r}
+surface_data <- surface_data %>%
+  mutate(nh4_n = if_else(nh4_n > 0.3, NA_real_, nh4_n))
+```
+
+### Nitrogen
+#### Pairs Plot
+```{r}
+tmp <- surface_data %>%
+  select(site, sample_date, nox_n:tp_flag) %>%
+  select(where(is.numeric))
+
+ggpairs(tmp, progress = FALSE)
+
+```
+
+```{r}
+ggpairs(log(tmp), progress = FALSE)
+```
+
+None of those correlations are especially high. The highest are
+for tn and nox_n, and op and tp. Neither is surprising.
+
+Note discrete nature of low values for nox_n and nh4_n.  those should mostly be
+censored observations, but we can't be sure here.
+
+#### DIN and Organic N
+We can calculate DIN as the sum of ammonium and nitrate, and organic N as the 
+difference between DIN and TN.
+
+```{r}
+surface_data <- surface_data %>%
+  mutate(din = nh4_n + nox_n,
+         din_cens = nh4_n_cens | nox_n_cens,
+         din_flag = nh4_n_flag | nox_n_flag,
+         on       = tn - din,
+         on_flag  = din_flag | tn_flag,
+         on_cens_r  = din_flag)    #since this is calculated by difference
+
+```
+
+##### Ternary Diagrams
+```{r calc_proportions}
+proportion_data <- surface_data %>%
+  select(site:hour, nox_n:tn_flag, din:on_cens_r) %>%
+  relocate(nh4_n, on, tn, .after = nox_n)%>%
+  mutate(across(nox_n:on, ~ .x/tn)) %>%
+  
+  relocate(nh4_n_flag, on_flag, tn_flag, .after = nox_n_flag) %>%
+  relocate(nh4_n_cens, on_cens_r, .after = nox_n_cens) %>%
+  
+  select(site, sample_date, year, nox_n:on_flag, ) %>%
+  filter(! is.na(nox_n), ! is.na(nh4_n), ! is.na(on))
+```
+
+###### Draft Plots
+We borrowed function to simply add alpha values to color palettes from here:
+[Description](https://www.r-bloggers.com/2014/03/colorramppalettealpha-and-addalpha-helper-functions-for-adding-transparency-to-colors-in-r/)
+[GitHub](https://github.com/mylesmharrison/colorRampPaletteAlpha/blob/master/colorRampPaletteAlpha.R)
+
+```{r transparency_fxn}
+addalpha <- function(colors, alpha=1.0) {
+  r <- col2rgb(colors, alpha=T)
+  # Apply alpha
+  r[4,] <- alpha*255
+  r <- r/255.0
+  return(rgb(r[1,], r[2,], r[3,], r[4,]))
+}
+```
+
+###### Colored by Censored Data
+```{r ternary_data_quality, fig.width = 5, fig.height = 5}
+pal = addalpha(cbep_colors(), 0.5)
+
+TernaryPlot(alab = 'Nitrate', blab = 'Ammonium', clab = 'Organic',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, 
+              col = pal[as.numeric(proportion_data$on_flag) + 1])
+
+legend('topleft', ncol = 1,
+        cex = .75,
+        legend = c('Data OK', 'Data Flag'),
+        box.lty = 0,
+        pch = 20,
+        col = cbep_colors())
+```
+
+###### Colored by Censored Data
+```{r ternary_censoring, fig.width = 5, fig.height = 5}
+pal = addalpha(cbep_colors(), 0.5)
+
+TernaryPlot(alab = 'Nitrate', blab = 'Ammonium', clab = 'Organic',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, 
+              col = pal[as.numeric(proportion_data$on_cens_r) + 1])
+
+legend('topleft', ncol = 1,
+       cex = .75,
+        legend = c('Uncensored', 'Censored'),
+        box.lty = 0,
+        pch = 20,
+        col = cbep_colors()[1:2])
+```
+
+Note the one point that falls outside of is basically a site where TN is very 
+close to DIN, so there was a slight negative estimate of ON.  It's from TB01
+from 07/21/2016. Other "low" ON sites are not related in any obvious way.
+
+###### Produce PDF
+We have slightly more control of size when we specify the graphics 
+device, as we can specify fonts and base font size.
+
+```{r ternary_pdf, fig.width = 3.5, fig.height = 3.5}
+cairo_pdf('ternary.pdf', width = 3.5, height = 5,
+          family = 'Montserrat', pointsize = 8)
+
+TernaryPlot(alab = 'Nitrate', blab = 'Ammonium', clab = 'Organic',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, 
+              col = pal[as.numeric(proportion_data$on_flag) + 1])
+
+legend('topleft', ncol = 1,
+       cex = .75,
+        legend = c('Data OK', 'Data Flag'),
+        box.lty = 0,
+        pch = 20,
+        col = cbep_colors())
+dev.off()
+```
+
+##### Histograms / Distributions
+Data is distributed fairly close to log-normal, although it is slightly
+heavy tailed and more skewed.
+
+```{r fig.width = 7, fig.height = 5}
+ggplot(surface_data, aes(tn)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  geom_vline(xintercept = 0.35, col = 'grey35') +
+    geom_vline(xintercept = 0.6, col = 'grey35')
+```
+
+So, in these data, the difference between eelgrass-oriented standards at about
+0.35 mg/l versus dissolved oxygen standards at about 0.6 mg/l is huge.
+
+### Phosphorus
+```{r fig.width = 7, fig.height = 5}
+ggplot(surface_data, aes(tp)) + 
+  geom_histogram(aes(fill = site, color = tp_cens)) +
+  scale_color_manual(values = c('black', 'yellow')) + 
+  scale_x_log10()
+```
+
+So very little of the data is censored.
+
+## N to P ratios
+```{r}
+surface_data <- surface_data %>%
+  mutate(n_to_p = tn/tp)
+```
+
+```{r fig.width = 7, fig.height = 5}
+ggplot(surface_data, aes(n_to_p)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  geom_vline(xintercept = 15, col = 'grey35')
+```
+
+Generally, our N:P ratios are well below 15, suggesting continued N limitation.
+Is that worth reporting on?  There may be N:P ratio variation between sites.
+
+## Chlorophyll and Phaeophytin
+This data does not include all chlorophyll data, because of ambiguities of 
+labeling in the source data.See "DEP_Nutrients_Preparation.Rmd" for details.
+
+```{r}
+tmp <- surface_data %>%
+  select(site, sample_date, chl, phaeo)
+```
+
+```{r}
+tmp %>%
+  select(chl, phaeo) %>%
+  mutate(chl_to_p = chl / phaeo) %>%
+  mutate(across(everything(), log)) %>%
+  ggpairs(progress = FALSE)
+```
+
+We see a lot of samples with phaeophytin well above chlorophyll levels.
+that is not impossible, but noteworthy.  It's worth looking at the scatter plot
+with a 1:1 reference line and with data wit hdata quality flags marked
+
+```{r}
+tmp <- surface_data %>%
+  select(site, sample_date,
+         chl, phaeo,
+         chl_flag, phaeo_flag, 
+         chl_cens, phaeo_cens)
+
+ggplot(tmp, aes(chl, phaeo)) +
+  geom_point(aes(color = chl_flag | phaeo_flag), alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0) +
+  scale_x_log10() + scale_y_log10() +
+  coord_equal() +
+  scale_color_manual(values = cbep_colors(), name = 'Data Quality Flag') +
+  theme_cbep(base_size = 12)
+```
+
+## Chlorophyll and Nutrients
+```{r}
+tmp <- surface_data %>%
+  select(site, sample_date, chl, phaeo, op_p, tp, tn, din, on, tss)
+```
+
+```{r fig.width = 7, fig.height = 7}
+tmp %>%
+  select(-site, -sample_date
+         ) %>%
+  mutate(across(everything(), log)) %>%
+  ggpairs(progress = FALSE)
+```
+
+Interestingly, The strongest correlation between chlorophyll and nutrients is with 
+TP, not TN.   Phaeophytin is correlated with Total N and organic N as well.
+Total suspended solids is  correlated with most metrics, suggesting it is 
+functioning here a surrogate for plankton abundance, which will be 
+correlated with everything.

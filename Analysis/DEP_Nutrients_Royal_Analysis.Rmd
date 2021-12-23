@@ -1,0 +1,641 @@
+---
+title: "Analysis of DEP Royal River Data From 2017"
+author: "Curtis C. Bohlen, Casco Bay Estuary Partnership."
+date: "06/15/2021"
+output:
+  github_document:
+    toc: true
+    fig_width: 5
+    fig_height: 4
+---
+
+<img
+    src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
+    style="position:absolute;top:10px;right:50px;" />
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align = 'center',
+                      fig.width = 5, fig.height = 4,
+                      collapse = TRUE, comment = "#>")
+```
+
+# Introduction
+This R Notebook focuses on analysis of patterns in nutrients 
+concentrations, especially total nitrogen at sites along the Royal and Cousins 
+estuaries.
+
+The focus is on documenting
+differences among sites sampled by Maine DEP.
+
+#Load Libraries
+```{r libraries}
+#library(readxl)
+library(tidyverse)
+library(viridis)  # Normally not called directly, but we need it for the ternary
+                  # plot color scale.
+
+library(GGally)
+library(mgcv)
+library(emmeans)
+
+library(Ternary) # Base graphics ternary plots
+
+library(CBEPgraphics)
+load_cbep_fonts()
+theme_set(theme_cbep())
+```
+
+# Folder References
+```{r folders}
+sibfldnm <- 'Derived_Data'
+parent <- dirname(getwd())
+sibling <- paste(parent,sibfldnm, sep = '/')
+
+dir.create(file.path(getwd(), 'figures'), showWarnings = FALSE)
+```
+
+# Load Data
+```{r load_data}
+dep_data <- read_csv(file.path(sibling, 'dep_nutrient_data.csv'),
+                     col_types = cols(
+                       .default = col_logical(),
+                       site_name = col_character(),
+                       site = col_character(),
+                       depth_designation = col_character(),
+                       dt = col_date(format = ""),
+                       month = col_character(),
+                       year = col_double(),
+                       time = col_time(format = ""),
+                       hour = col_double(),
+                       depth = col_double(),
+                       chl = col_double(),
+                       phaeo = col_double(),
+                       nox_n = col_double(),
+                       nh4_n = col_double(),
+                       tn = col_double(),
+                       op_p = col_double(),
+                       tp = col_double(),
+                       tss = col_double(),
+                       `Sample Comments` = col_character(),
+                       `Validation Comments` = col_character(),
+                       Latitude = col_skip(),
+                       Longitude = col_skip())) %>%
+  rename(sample_date = dt)
+```
+
+# Surface Data Only
+```{r surface_data}
+surface_data <- dep_data %>%
+  filter(depth <= 1) %>%
+  mutate(month = factor(month, levels = month.abb))%>%
+  mutate(yearf = factor(year)) %>%
+  mutate(doy = as.numeric(format(sample_date, format = '%j'))) %>%
+  relocate(yearf, doy, .after = year)
+```
+
+There are a few sky-high NH4 values, at nominal concentrations of 0.4 or 4.0 
+mg.l NH4-N.  All are flagged as "censored" (despite high values) and 
+carry annotations of excessive hold times.  We delete them.
+
+### Correct Misleading NH4 Values
+```{r fix_NH4}
+surface_data <- surface_data %>%
+  mutate(nh4_n = if_else(nh4_n > 0.3, NA_real_, nh4_n))
+```
+
+### Add Shorter Site Names
+```{r add_names}
+site_names <- read_csv(file.path(sibling, "GIS", 'dep_locations.csv')) %>%
+  select(site, short_name)
+surface_data <- surface_data %>%
+  left_join(site_names, by = 'site') %>%
+  relocate(short_name, .after = site)
+```
+
+### Add DIN and Organic N
+We calculate DIN as the sum of ammonium and nitrate, and organic N as the 
+difference between DIN and TN.
+
+```{r add_din_and_on}
+surface_data <- surface_data %>%
+  mutate(din = nh4_n + nox_n,
+         din_cens = nh4_n_cens | nox_n_cens,
+         din_flag = nh4_n_flag | nox_n_flag,
+         on       = tn - din,
+         on_flag  = din_flag | tn_flag,
+         on_cens_r  = din_flag) %>%   #since this is calculated by difference
+  relocate(din:on_cens_r, .after = tn_flag)
+```
+
+# Royal and Cousins Data Subset from 2017
+```{r royal_sites}
+royal_sites <- c('CRTRIB0','CR00', 'CR-31', 'CR-44',
+                 #'RR00',                            # This site not present in 2017
+                 'RR00_A', 'RR-01', 'RR-06',
+                 'RR-13', 'RR-19', 'RR-20')
+
+royal_names <- site_names$short_name[match(royal_sites,site_names$site)]
+cbind(royal_sites, royal_names)
+```
+```{r royal_subset}
+royal_data_2017 <- surface_data %>%
+  filter(year == 2017) %>%
+  filter(site %in% royal_sites) %>%
+  mutate(site = factor(site, levels = royal_sites),
+         short_name = factor(short_name, levels = royal_names))
+rm(surface_data, dep_data, site_names, royal_sites)
+```
+
+# Summary of Metadata
+## QA/QC Samples
+We conducted no analysis of QA/QC samples, and simply deleted then from the data
+to avoid confusion.
+
+## Data Quality Flags and Censoring Flags
+While preparing our working data, we separated raw observations from text
+annotations, including data quality flags.  
+
+We had "J", 'J*", "B" and "JB" flags to contend with.  While the metadata we
+received from DEP did not include definitions of all flags, these are
+conventionally used to indicate that values are to be treated as "estimated
+values" because of uncertain precision, especially for values between instrument
+detection and contracted detection or quantitation limits.   Where data quality
+flags existed after deleting the QA/QC samples, we collapsed them down to a
+`TRUE` / `FALSE` flag indicating whether samples were flagged or not. These 
+flags follow a consistent naming convention, with the variable name followed by
+an underscore and "flag".
+
+We also had a few "U",  "U<" and ">" flags.  These represent censored values,
+either right censored ( ">") for Secchi depth, or left censored for other 
+parameters.  Again, we separated out a `TRUE` / `FALSE` flag to indicate 
+censored values.  These flags also follow a consistent naming convention, with 
+the variable name followed by an underscore and "cens".
+
+## Units
+Our derived data sources lack clear indication of units, which were documented
+in the source Excel files.  We summarize relevant information here.
+
+Variable Name |  Meaning                 | Units                 |  
+--------------|--------------------------|-----------------------|  
+site_name     | DEP "Site ID"            |                       |  
+site          | DEP "Sample Point ID" without depth designation |    |  
+depth_designation | DEP depth designation from "Sample Point ID" | |
+sample_date   | Date of sample collection    | yyyy-mm-dd format     |
+month     | Month, derived from date     | Three letter codes    |
+year      | Year, derived from date      |                  |    |
+time      | time of sample               | 24 hour clock, hh:mm format |
+hour      | hour, derived from time      |                       |
+depth     | Sample Depth	               | Meters                |
+chl       |	Chlorophyll A, from "Chlorophyll A - Phaeophytin|  UG/L | |
+phaeo     | Phaeophytin                   | UG/L                 |
+nox_n     | Nitrate + Nitrite As N        | MG/L                 |
+nh4_n     | Ammonia as Nitrogen           | MG/L                 |
+tn        | Total Nitrogen                | MG/L                 |
+op_p      | Orthophosphate as Phosphorus  | MG/L                 |
+tp        | Total Phosphorus as P         | MG/L                 |
+tss       | Total Suspended Solids        | MG/L                 |
+secchi    | Secchi Depth                  | M                    |
+
+# Nitrogen Pairs Plot
+```{r n_pairs}
+tmp <- royal_data_2017 %>%
+  select(site, sample_date, nox_n:tp_flag) %>%
+  select(where(is.numeric))
+
+ggpairs(log(tmp), progress = FALSE)
+```
+
+The N species are generally correlated, as are the P species.
+
+# Ternary Diagrams
+```{r calc_proportions}
+proportion_data <- royal_data_2017 %>%
+  select(site:hour, nox_n:tn_flag, din:on_cens_r) %>%
+  relocate(nh4_n, on, tn, .after = nox_n)%>%
+  mutate(across(nox_n:on, ~ .x/tn)) %>%
+  
+  relocate(nh4_n_flag, on_flag, tn_flag, .after = nox_n_flag) %>%
+  relocate(nh4_n_cens, on_cens_r, .after = nox_n_cens) %>%
+  
+  select(site, sample_date, year, nox_n:on_flag, ) %>%
+  filter(! is.na(nox_n), ! is.na(nh4_n), ! is.na(on))
+```
+
+## Colored by Site 
+```{r ternary_censoring, fig.width = 5, fig.height = 5}
+pal = viridis(10, alpha =  0.75)
+
+TernaryPlot(alab = 'Nitrate + Nitrite', blab = 'Ammonium', clab = 'Other N',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, cex = 2 * proportion_data$tn,
+              col = pal[as.numeric(proportion_data$site)])
+
+legend('topleft', ncol = 2,
+       cex = .75,
+        legend = levels(proportion_data$site),
+        box.lty = 0,
+        pch = 20,
+        col = pal)
+```
+
+So, we see that most samples on the Royal have low ammonium, with variable
+levels of NOx versus organic N.  The sites with the highest proportion
+of NOx tend to be from the upper tributaries / head of tide. High TN samples
+may be slightly more likely to have extreme proportions, but they do not fall
+in any particular area of the plot.
+
+## Produce PDF
+We have slightly more control of size of fonts when we specify the graphics 
+device, as we can specify fonts and base font size.
+
+```{r ternary_pdf, fig.width = 3.5, fig.height = 3.5}
+cairo_pdf('figures/ternary_royal.pdf', width = 3.5, height = 5,
+          family = 'Montserrat', pointsize = 8)
+
+TernaryPlot(alab = 'Nitrate + Nitrite', blab = 'Ammonium', clab = 'Other N',
+            grid.lines = 5, grid.minor.lines = 0)
+TernaryPoints(proportion_data[4:6], pch = 16, 
+              col = pal[as.numeric(proportion_data$site)])
+
+legend('topleft', ncol = 2,
+       cex = .75,
+        legend = levels(proportion_data$site),
+        box.lty = 0,
+        pch = 20,
+        col = pal)
+dev.off()
+```
+
+# Descriptive Statistics
+```{r descriptive_stats}
+royal_results <- royal_data_2017 %>%
+  group_by(site, short_name) %>%
+  summarize(across(c(nox_n, nh4_n, din, on, tn, chl, tss),
+                   .fns = c(mn = ~ mean(.x, na.rm = TRUE),
+                            sd = ~ sd(.x, na.rm = TRUE), 
+                            n = ~sum(! is.na(.x)),
+                            md = ~ median(.x, na.rm = TRUE),
+                            iqr = ~ IQR(.x, na.rm = TRUE),
+                            p90 = ~ quantile(.x, .9, na.rm = TRUE),
+                            gm = ~ exp(mean(log(.x), na.rm = TRUE)))),
+            .groups = 'drop') %>%
+  mutate(site = fct_reorder(factor(site), tn_md),
+         short_name = fct_reorder(factor(short_name), tn_md))
+```
+
+A Seasonal Pattern appears likely.  Variances do not appear equal.  
+
+# DIN Analysis
+## Data Prevalence
+```{r din_data_months, fig.width = 7}
+xtabs(~ month + site, data = royal_data_2017, subset = ! is.na(din))%>%
+  as_tibble() %>%
+  mutate(month = factor(month, levels = month.abb)) %>%
+  filter(n>0) %>%
+
+  ggplot(aes(site, month, fill = sqrt(n))) +
+  geom_tile() +
+  theme_cbep(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .25))
+```
+
+We might consider dropping the September samples to avoid model-induced bias.
+
+## Histograms / Distributions
+```{r din_histogram}
+plt <- ggplot(royal_data_2017, aes(din)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  theme_cbep(base_size = 10) +
+  theme(legend.position = 'None')
+plt
+```
+
+Data is relatively sparse for each site, so complex models are not an option 
+here.  Differences between sites appear likely.
+
+## Draft Graphic
+```{r din_graphic, fig.height = 4, fig.width = 5}
+ggplot(royal_data_2017, aes(din, short_name)) +
+  geom_point(aes(color = doy)) +
+  scale_color_viridis_c(name = 'Day of Year') +
+  
+  geom_point(data = royal_results, mapping = aes(x = din_md, y = short_name),
+             shape = 3, size = 2,
+             color = cbep_colors()[3]) +
+  
+  ylab('') +
+  xlab('Dissolved Inorganic Nitrogen (mg/l)') +
+  
+  theme_cbep(base_size = 12)
+  #theme(legend.position = 'None' )  +
+  #scale_x_log10()
+  
+ggsave('figures/din_by_site_royal.pdf', device = cairo_pdf, width = 6, height = 4)
+```
+
+## Linear Models
+```{r din_lm_1}
+royal_din_lm_full <- lm(log(din) ~ site + month, data = royal_data_2017)
+anova(royal_din_lm_full)
+```
+
+```{r din_lm_2}
+royal_din_lm <- step(royal_din_lm_full)
+anova(royal_din_lm)
+```
+
+### Marginal Means
+```{r din_lm_marginals}
+royal_din_emms_lm <- emmeans(royal_din_lm, 'site', type = 'response')
+```
+
+```{r plot_din_lm_marginals}
+plot(royal_din_emms_lm) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25)) +
+  geom_point(data = royal_results, aes(y = site, x = din_mn),
+             color = 'red') +
+  geom_point(data = royal_results, aes(y = site, x = din_gm),
+             color = 'yellow')
+```
+
+Differences between model predictions and observed means are entirely
+because the model is predicting geometric, not arithmetic means.
+
+### Model Diagnostics
+```{r din_lm_diagnostics}
+oldpar <- par(mfrow = c(2,2))
+plot(royal_din_lm)
+par(oldpar)
+```
+
+The log transform here was a bit too strong, but the diagnostics are not 
+dreadful, and they are better than diagnostics on untransformed data.  However,
+we know the variances are probably not uniform across sites, so we should 
+treat error estimates and estimates of statistical significance with considerable 
+skepticism.
+
+## GAM Model
+```{r din_gam}
+royal_din_gam <- gam(log(din) ~ site + s(doy, k = 5), data = royal_data_2017)
+anova(royal_din_gam)
+```
+
+So the GAM term is not statistically meaningful with such small samples, but it
+does appear to better address model specification, generating a nicer
+distribution of residuals.  Still, there is little value to continuing down 
+this road.
+
+```{r din_gam_diagnostics}
+oldpar = par(mfrow = c(2,2))
+gam.check(royal_din_gam)
+par(oldpar)
+```
+
+# TN Analysis
+## Histograms
+```{r tn_histograms}
+plt <- ggplot(royal_data_2017, aes(tn)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  theme_cbep(base_size = 10) +
+  theme(legend.position = 'None') +
+  geom_vline(xintercept = 0.35, col = 'grey35') +
+  geom_vline(xintercept = 0.6, col = 'grey35')
+
+plt + facet_wrap(~site)
+```
+
+The tributaries appear to have the highest TN values.
+
+## Draft Graphic
+```{r tn_graphic, fig.height = 4, fig.width = 5}
+ggplot(royal_data_2017, aes(tn, short_name)) +
+  geom_point(aes(color = doy)) +
+  scale_color_viridis_c(name = 'Day of Year') +
+  
+  geom_point(data = royal_results, mapping = aes(x = tn_md, y = short_name),
+             shape = 3, size = 3,
+             color = cbep_colors()[3]) +
+  
+  ylab('') +
+  xlab('Total Nitrogen (mg/l)') +
+  
+  theme_cbep(base_size = 12)  +
+  #theme(legend.position = 'None' )  +
+  scale_x_log10()
+  
+  
+ggsave('figures/tn_by_site_royal.pdf', device = cairo_pdf, width = 6, height = 4)
+```
+
+## Linear Models
+```{r tn_lm_1}
+royal_tn_lm_full <- lm(log(tn) ~ site + month, data = royal_data_2017)
+anova(royal_tn_lm_full)
+```
+
+```{r tn_lm_2}
+royal_tn_lm <- step(royal_tn_lm_full)
+anova(royal_tn_lm)
+```
+
+```{r summary_tn_lm_2}
+summary(royal_tn_lm)
+```
+
+So the month of July had higher than expected TN, and that is unlikely to be
+solely due to chance (if we view each Site as independent, which in this
+setting, we do not).  We have too little data to conclude that there is a
+meaningful seasonal pattern. All we know is "July is high" which may reflect the
+year's peculiar weather or something.  We proceed with a simpler model here.
+
+```{r tn_lm_3}
+royal_tn_lm_red <- lm(log(tn) ~ site, data = royal_data_2017)
+anova(royal_tn_lm_red)
+```
+
+### Marginal Means
+```{r tn_lm_marginals}
+royal_tn_emms_lm <- emmeans(royal_tn_lm_red, 'site', type = 'response')
+```
+
+```{r plot_tn_lm_marginals}
+plot(royal_tn_emms_lm) + coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25)) +
+  geom_point(data = royal_results, aes(y = site, x = tn_mn),
+             color = 'red') +
+  geom_point(data = royal_results, aes(y = site, x = tn_gm),
+             color = 'yellow')
+```
+
+The linear model does an excellent job of returning the observed geometric 
+means, as expected.
+
+### Model Diagnostics
+```{r tn_lm_diagnostics}
+oldpar <- par(mfrow = c(2,2))
+plot(royal_tn_lm_red)
+par(oldpar)
+```
+
+Those look excellent, except for the possible scale-location pattern.  However, 
+since that pattern reflects discrete site predictions, it likely only reflects 
+low variability at one site -- for unknown reasons.
+
+## GAM Model
+```{r tn_gam}
+royal_tn_gam <- gam(log(tn) ~ site + s(doy, k = 4), data = royal_data_2017)
+anova(royal_tn_gam)
+```
+
+```{r view_tn_gam}
+plot(royal_tn_gam)
+```
+
+```{r tn_gam_diagnostics}
+oldpar = par(mfrow = c(2,2))
+gam.check(royal_tn_gam)
+par(oldpar)
+```
+
+# N to P ratios
+## Histograms / Distributions
+```{r add_n2p}
+royal_data_2017 <- royal_data_2017 %>%
+  mutate(n_to_p = tn/tp)
+```
+
+```{r histogram_n2p}
+plt <- ggplot(royal_data_2017, aes(n_to_p)) + 
+  geom_histogram(aes(fill = site)) +
+  scale_x_log10() +
+  theme_cbep(base_size = 10) +
+  theme(legend.position = 'None') +
+  geom_vline(xintercept = 15,col = 'grey35')
+plt
+```
+
+Generally, our N:P ratios are well below 15, suggesting continued N limitation.
+Is that worth reporting on?  There is clearly some variation between sites. The
+highest N:P ratios occur at the Royal River head of tide, suggesting high N and 
+low P in freshwater loading to the estuary, and possible P limitation.
+
+```{r histograms_n2p, fig.width = 7, fig.height = 5}
+plt +  facet_wrap (~site)
+```
+
+## Descriptive Statistics
+```{r descriptive_stats_n2p}
+royal_n2p_results <- royal_data_2017 %>%
+  group_by(site, short_name) %>%
+  summarize(across(c(tn, tp, n_to_p),
+                   .fns = c(mn = ~ mean(.x, na.rm = TRUE),
+                            sd = ~ sd(.x, na.rm = TRUE), 
+                            n = ~sum(! is.na(.x)),
+                            md = ~ median(.x, na.rm = TRUE),
+                            iqr = ~ IQR(.x, na.rm = TRUE),
+                            p90 = ~ quantile(.x, .9, na.rm = TRUE),
+                            gm = ~ exp(mean(log(.x), na.rm = TRUE)))),
+            .groups = 'drop') %>%
+  mutate(site = fct_reorder(factor(site), tn_md),
+         short_name = fct_reorder(factor(short_name), tn_md))
+```
+
+## Draft Graphic
+```{r graphic_n2p, fig.height = 4, fig.width = 5}
+ggplot(royal_data_2017, aes(n_to_p, short_name)) +
+  geom_point(aes(color = month)) +
+  scale_color_manual(values = cbep_colors2(), name = '') +
+  
+  geom_point(data = royal_n2p_results, mapping = aes(x = n_to_p_md, y = short_name),
+             shape = 3, size = 2,
+             color = cbep_colors()[3]) +
+  
+  geom_vline(xintercept = 15, color = 'gray35') +
+  
+  ylab('') +
+  xlab('Dissolved Inorganic Nitrogen (mg/l)') +
+  
+  theme_cbep(base_size = 12)  +
+  #theme(legend.position = 'None' )  +
+  scale_x_log10()
+  
+ggsave('figures/n_to_p_by_site_royal.pdf', device = cairo_pdf, width = 6, height = 4)
+```
+
+# Phosphorus (A Few Graphics)
+```{r tp_histogram, fig.width = 7, fig.height = 5}
+ggplot(royal_data_2017, aes(tp)) + 
+  geom_histogram(aes(fill = site, color = tp_cens)) +
+  scale_color_manual(values = c('black', 'yellow')) + 
+  scale_x_log10()
+```
+So very little of the data is censored.
+
+```{r tp_plot_1}
+ggplot(royal_data_2017, aes(site, tp)) + 
+  geom_point(aes(color = doy)) +
+  geom_smooth(method = 'lm') +
+  scale_color_viridis_c() +
+  scale_y_log10() +
+  theme_cbep(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.25, hjust = 1))
+```
+
+```{r tp_plot_2}
+ggplot(royal_data_2017, aes(doy, tp)) + 
+  geom_point(aes(color = site)) +
+  geom_smooth(method = 'lm') +
+  scale_color_viridis_d() +
+  scale_y_log10()
+```
+
+There is a  possibility of a seasonal pattern here.
+
+# Chlorophyll and Phaeophytin
+This data does not include all chlorophyll data, because of ambiguities of 
+labeling in the source data.See "DEP_Nutrients_Preparation.Rmd" for details.
+```{r chl_pairs}
+tmp <- royal_data_2017 %>%
+  select(site, sample_date, chl, phaeo)
+
+tmp %>%
+  select(chl, phaeo) %>%
+  mutate(chl_to_p = chl / phaeo) %>%
+  mutate(across(everything(), log)) %>%
+  ggpairs(progress = FALSE)
+```
+
+Generally, Chl and Phaeo are correlated.
+
+```{r chl_graphic}
+tmp <- royal_data_2017 %>%
+  select(site, sample_date,
+         chl, phaeo,
+         chl_flag, phaeo_flag, 
+         chl_cens, phaeo_cens)
+
+ggplot(tmp, aes(chl, phaeo)) +
+  geom_point(aes(color = chl_flag | phaeo_flag), alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0) +
+  scale_x_log10() + scale_y_log10() +
+  coord_equal() +
+  scale_color_manual(values = cbep_colors(), name = 'Data Quality Flag') +
+  theme_cbep(base_size = 12)
+```
+
+## Chlorophyll and Nutrients
+```{r chl_nutrients_pairs, fig.width = 7, fig.height = 7}
+tmp <- royal_data_2017 %>%
+  select(site, sample_date, chl, phaeo, op_p, tp, tn, din, on, tss)
+
+tmp %>%
+  select(-site, -sample_date
+         ) %>%
+  mutate(across(everything(), log)) %>%
+  ggpairs(progress = FALSE)
+```
+
+The strongest correlation between chlorophyll and nutrients is
+with TP, not TN.
