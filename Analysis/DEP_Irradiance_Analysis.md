@@ -19,31 +19,29 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership.
         Sites](#identify-regularly-sampled-sites)
     -   [Location-Scale Relationships](#location-scale-relationships)
     -   [Means and SE of k by Site](#means-and-se-of-k-by-site)
+        -   [Create Geometric Mean
+            Function](#create-geometric-mean-function)
     -   [Seasonal Patterns](#seasonal-patterns)
         -   [Graphic](#graphic)
     -   [Initial Impressions](#initial-impressions)
 -   [Analysis](#analysis)
-    -   [Strategy Questions](#strategy-questions)
+    -   [Strategy](#strategy)
     -   [Linear Models](#linear-models)
         -   [Unweighted Models](#unweighted-models)
         -   [Weighted Models](#weighted-models)
         -   [“Adjusted” Means by Site](#adjusted-means-by-site)
-        -   [Compare Marginal and Observed
-            Means](#compare-marginal-and-observed-means)
+        -   [Compare Model Estimates and Observed
+            Means](#compare-model-estimates-and-observed-means)
         -   [Compare Model Results](#compare-model-results)
         -   [Hierarchical Model](#hierarchical-model)
         -   [Results](#results)
 -   [Save Results](#save-results)
--   [Consider Robust Linear Models
-    Instead?](#consider-robust-linear-models-instead)
 -   [Export Results for GIS](#export-results-for-gis)
 -   [Draft Graphics](#draft-graphics)
     -   [Point Chart Based on Observed
         Means](#point-chart-based-on-observed-means)
     -   [Point Chart based on Hierarchical
         Models](#point-chart-based-on-hierarchical-models)
-    -   [Bar Chart From Hierarchical
-        Model](#bar-chart-from-hierarchical-model)
 
 <img
     src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
@@ -97,36 +95,27 @@ a linear model.
 \#Load Libraries
 
 ``` r
-#library(readxl)
 library(tidyverse)
-#> Warning: package 'tidyverse' was built under R version 4.0.5
 #> -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
 #> v ggplot2 3.3.5     v purrr   0.3.4
 #> v tibble  3.1.6     v dplyr   1.0.7
 #> v tidyr   1.1.4     v stringr 1.4.0
-#> v readr   2.1.0     v forcats 0.5.1
-#> Warning: package 'ggplot2' was built under R version 4.0.5
-#> Warning: package 'tidyr' was built under R version 4.0.5
-#> Warning: package 'dplyr' was built under R version 4.0.5
-#> Warning: package 'forcats' was built under R version 4.0.5
+#> v readr   2.1.1     v forcats 0.5.1
 #> -- Conflicts ------------------------------------------ tidyverse_conflicts() --
 #> x dplyr::filter() masks stats::filter()
 #> x dplyr::lag()    masks stats::lag()
 
 library(GGally)
-#> Warning: package 'GGally' was built under R version 4.0.5
 #> Registered S3 method overwritten by 'GGally':
 #>   method from   
 #>   +.gg   ggplot2
 library(emmeans)
-#> Warning: package 'emmeans' was built under R version 4.0.5
 #> 
 #> Attaching package: 'emmeans'
 #> The following object is masked from 'package:GGally':
 #> 
 #>     pigs
 library(mgcv)
-#> Warning: package 'mgcv' was built under R version 4.0.5
 #> Loading required package: nlme
 #> 
 #> Attaching package: 'nlme'
@@ -145,11 +134,9 @@ theme_set(theme_cbep())
 # Folder References
 
 ``` r
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
-
-#dir.create(file.path(getwd(), 'figures'), showWarnings = FALSE)
 ```
 
 # Load Data
@@ -281,16 +268,22 @@ over-represent low-precision high values in any regression.
 
 Given the strong heteroskedasticity and scale-location relationship
 (even after log transformation of the K data), simple linear regressions
-are likely to be problematic. Weighted analyses are likely to also be
-challenging, as it is not immediately obvious how to weight each
-estimate of k if we analyze log-transformed data, which appears
-essential here.
+are likely to be problematic. Weighted analyses are likely perform
+better.
 
 ## Means and SE of k by Site
 
 These are “raw” estimates and do not account for the uncertainty of
 individual estimates of K, as reflected in the standard errors (`k_se`)
 in the data.
+
+### Create Geometric Mean Function
+
+``` r
+gm_mean <- function(x) {
+  exp(mean(log(x), na.rm = TRUE))
+}
+```
 
 ``` r
 k_means <- k_data %>%
@@ -299,22 +292,23 @@ k_means <- k_data %>%
             k_n_tot = sum(k_n),
             k_vals  =  sum(! is.na(k_est)),
             k_mean  = mean(k_est),
-            k_se    = sd(k_est)/sqrt(sum(! is.na(k_est)))) %>%
+            k_se    = sd(k_est)/sqrt(sum(! is.na(k_est))),
+            k_gm    = gm_mean(k_est)) %>%
   relocate(site_name)
 k_means
-#> # A tibble: 26 x 6
-#>    site_name                      site  k_n_tot k_vals k_mean    k_se
-#>    <chr>                          <fct>   <dbl>  <int>  <dbl>   <dbl>
-#>  1 CLAPBOARD ISLAND - P7CBI       P7CBI     207     18  0.412  0.0183
-#>  2 FORE RIVER - FR09              FR09      418     30  0.497  0.0128
-#>  3 FORT GORGES - P6FGG            P6FGG     193     18  0.497  0.0241
-#>  4 FORE RIVER - FR07              FR07       43      3  0.564  0.0624
-#>  5 FORE RIVER - FR05A             FR05A      14      1  0.595 NA     
-#>  6 HARRASEEKET RIVER - HR05       HR05       42      3  0.608  0.0441
-#>  7 FORE RIVER - FR04              FR04       55      4  0.616  0.0368
-#>  8 BANDM RAILROAD TRESTLE - BMR02 BMR02     237     28  0.629  0.0149
-#>  9 LONG CREEK - LC02              LC02       29      4  0.629  0.0411
-#> 10 HARRASEEKET RIVER - HR04       HR04       39      3  0.646  0.0192
+#> # A tibble: 26 x 7
+#>    site_name                      site  k_n_tot k_vals k_mean    k_se  k_gm
+#>    <chr>                          <fct>   <dbl>  <int>  <dbl>   <dbl> <dbl>
+#>  1 CLAPBOARD ISLAND - P7CBI       P7CBI     207     18  0.412  0.0183 0.405
+#>  2 FORE RIVER - FR09              FR09      418     30  0.497  0.0128 0.492
+#>  3 FORT GORGES - P6FGG            P6FGG     193     18  0.497  0.0241 0.487
+#>  4 FORE RIVER - FR07              FR07       43      3  0.564  0.0624 0.557
+#>  5 FORE RIVER - FR05A             FR05A      14      1  0.595 NA      0.595
+#>  6 HARRASEEKET RIVER - HR05       HR05       42      3  0.608  0.0441 0.605
+#>  7 FORE RIVER - FR04              FR04       55      4  0.616  0.0368 0.613
+#>  8 BANDM RAILROAD TRESTLE - BMR02 BMR02     237     28  0.629  0.0149 0.624
+#>  9 LONG CREEK - LC02              LC02       29      4  0.629  0.0411 0.625
+#> 10 HARRASEEKET RIVER - HR04       HR04       39      3  0.646  0.0192 0.645
 #> # ... with 16 more rows
 ```
 
@@ -357,12 +351,17 @@ We can fit models looking at light attenuation coefficients by site,
 year and day of the year, but site PRV70 shows a complex seasonal
 pattern, while other sites do not appear to do so. That forces any
 single large model that fully accommodates seasonal patterns to be
-fairly complex. We focus on linear terms, even though that underfits the
-pattern occurring on the Presumpscot.
+fairly complex.
 
 # Analysis
 
-## Strategy Questions
+A log transform helps with model diagnostics, although it does not
+completely eliminate skewness in the residuals or a marked
+location-scale relationship. We extract predicted values from our
+regressions by back transforming from the log transform, thus making
+predictions akin to geometric means.
+
+## Strategy
 
 We have two main considerations here:
 
@@ -375,8 +374,9 @@ We have two main considerations here:
     uncertainty from our better sampled sites to enhance uncertainty
     estimates for the less well studied sites?
 
-We test both approaches by looking only at sites for which we have
-substantial data.
+We tested both approaches by looking only at sites for which we have
+substantial data. We then applied our preferred model(s) to the full
+data set. Here we skip the preliminary models.
 
 ## Linear Models
 
@@ -481,24 +481,18 @@ preferred sites models show strong location-scale patterns.
 ### Weighted Models
 
 In a conventional weighted linear model, we would weight observations by
-the inverse of their estimated standard errors, but here we are taking
-the log transform of our estimates, and conducting regressions on those
-values. If we weight based on squared standard error, we will overstate
-uncertainty for our high uncertainty samples, especially the high K
-estimates.
+the inverse of their estimated variances, but here we are taking the log
+transform of our estimates, and conducting regressions on those values.
 
 Ideally, we want to weight by the square of the estimated standard error
 of the log of K. We do not have that estimate, so we substitute the
 square of the log of the standard error of K. That is not a mathematical
 identity, but it should produce a weighted regression that performs
-better than using no weighting at all. An alternative would be to
-formally model the location-scale relationship, but I believe this makes
-better use of our knowledge of model uncertainty that underlies our
-estimates of k.
+adequately. An alternative would be to formally model the location-scale
+relationship, but I believe this makes better use of our knowledge of
+model uncertainty that underlies our estimates of k.
 
 ``` r
-full_wlm <- lm(log(k_est) ~ factor(year) +  doy + site + site:doy, 
-              weights = 1/(log(k_se)^2), data = k_data)
 lim_wlm <- lm(log(k_est) ~ factor(year) +  doy + site + site:doy, 
               weights = 1/(log(k_se)^2), data = k_data,
              subset = site %in% preferred_sites)
@@ -566,7 +560,7 @@ The general conclusions are similar. Time of year matters at several our
 riverine sites. Some years are better than others. Sites differ, with
 sites influenced by freshwater likely to have higher light extinction
 coefficients. (Notice that standard errors are slightly higher in this
-model, because of the weighting. That is expected)
+model, because of the weighting. That is expected.)
 
 ``` r
 oldpar <- par(mfrow = c(2,2))
@@ -593,8 +587,6 @@ which is our main interest here.
 small_wlm <- lm(log(k_est) ~ factor(year) +  site , 
               weights = 1/(log(k_se)^2), data = k_data,
               subset = site %in% preferred_sites)
-small_wlm_all <- lm(log(k_est) ~ factor(year) +  site , 
-              weights = 1/(log(k_se)^2), data = k_data)
 ```
 
 ``` r
@@ -659,44 +651,8 @@ strong.
 ### “Adjusted” Means by Site
 
 ``` r
-emms_full <- emmeans(full_wlm, 'site', at = list(doy = 200), type = 'response')
-#> NOTE: Results may be misleading due to involvement in interactions
-emms_small_all <- emmeans(small_wlm_all, 'site', at = list(doy = 200), 
-                       type = 'response')
-
-(emms_w <- emmeans(lim_wlm, 'site', at = list(doy = 200), type = 'response'))
-#> NOTE: Results may be misleading due to involvement in interactions
-#>  site  response     SE  df lower.CL upper.CL
-#>  P7CBI    0.409 0.0313 207    0.352    0.476
-#>  FR09     0.491 0.0290 207    0.437    0.552
-#>  P6FGG    0.502 0.0364 207    0.435    0.579
-#>  BMR02    0.628 0.0393 207    0.556    0.711
-#>  EEB18    0.654 0.0387 207    0.582    0.735
-#>  CBPR     0.679 0.0408 207    0.603    0.765
-#>  PR-28    0.795 0.0484 207    0.705    0.897
-#>  PR-17    1.109 0.0639 207    0.990    1.242
-#>  PRV70    1.138 0.0686 207    1.011    1.282
-#> 
-#> Results are averaged over the levels of: year 
-#> Confidence level used: 0.95 
-#> Intervals are back-transformed from the log scale
-(emms_small <- emmeans(small_wlm, 'site', at = list(doy = 200), 
-                       type = 'response'))
-#>  site  response     SE  df lower.CL upper.CL
-#>  P7CBI    0.408 0.0326 216    0.349    0.478
-#>  FR09     0.496 0.0301 216    0.440    0.559
-#>  P6FGG    0.503 0.0378 216    0.433    0.583
-#>  BMR02    0.635 0.0413 216    0.558    0.722
-#>  EEB18    0.656 0.0408 216    0.580    0.741
-#>  CBPR     0.677 0.0421 216    0.599    0.765
-#>  PR-28    0.776 0.0491 216    0.685    0.879
-#>  PR-17    1.092 0.0658 216    0.969    1.229
-#>  PRV70    1.105 0.0676 216    0.979    1.246
-#> 
-#> Results are averaged over the levels of: year 
-#> Confidence level used: 0.95 
-#> Intervals are back-transformed from the log scale
-
+cat("Unweighted Linear Model\n")
+#> Unweighted Linear Model
 (emms_uw <- emmeans(lim_lm, 'site', at = list(doy = 200), type = 'response'))
 #> NOTE: Results may be misleading due to involvement in interactions
 #>  site  response     SE  df lower.CL upper.CL
@@ -713,15 +669,52 @@ emms_small_all <- emmeans(small_wlm_all, 'site', at = list(doy = 200),
 #> Results are averaged over the levels of: year 
 #> Confidence level used: 0.95 
 #> Intervals are back-transformed from the log scale
+cat("Weighted Linear Model\n")
+#> Weighted Linear Model
+(emms_w <- emmeans(lim_wlm, 'site', at = list(doy = 200), type = 'response'))
+#> NOTE: Results may be misleading due to involvement in interactions
+#>  site  response     SE  df lower.CL upper.CL
+#>  P7CBI    0.409 0.0313 207    0.352    0.476
+#>  FR09     0.491 0.0290 207    0.437    0.552
+#>  P6FGG    0.502 0.0364 207    0.435    0.579
+#>  BMR02    0.628 0.0393 207    0.556    0.711
+#>  EEB18    0.654 0.0387 207    0.582    0.735
+#>  CBPR     0.679 0.0408 207    0.603    0.765
+#>  PR-28    0.795 0.0484 207    0.705    0.897
+#>  PR-17    1.109 0.0639 207    0.990    1.242
+#>  PRV70    1.138 0.0686 207    1.011    1.282
+#> 
+#> Results are averaged over the levels of: year 
+#> Confidence level used: 0.95 
+#> Intervals are back-transformed from the log scale
+cat("Simpler Weighted Linear Model\n")
+#> Simpler Weighted Linear Model
+(emms_small <- emmeans(small_wlm, 'site', at = list(doy = 200), 
+                       type = 'response'))
+#>  site  response     SE  df lower.CL upper.CL
+#>  P7CBI    0.408 0.0326 216    0.349    0.478
+#>  FR09     0.496 0.0301 216    0.440    0.559
+#>  P6FGG    0.503 0.0378 216    0.433    0.583
+#>  BMR02    0.635 0.0413 216    0.558    0.722
+#>  EEB18    0.656 0.0408 216    0.580    0.741
+#>  CBPR     0.677 0.0421 216    0.599    0.765
+#>  PR-28    0.776 0.0491 216    0.685    0.879
+#>  PR-17    1.092 0.0658 216    0.969    1.229
+#>  PRV70    1.105 0.0676 216    0.979    1.246
+#> 
+#> Results are averaged over the levels of: year 
+#> Confidence level used: 0.95 
+#> Intervals are back-transformed from the log scale
 ```
 
-All models are producing similar results.
+All models are producing similar results. Differences are just large
+enough to be of interest.
 
 #### Importance of Interactions?
 
 We have to take the warnings about interactions seriously. The
-interaction is with day of the year. We can visualize the patterns like
-this. (Adding standard errors to the plot makes it too complex to
+interaction is with day of the year. We can visualize the patterns as
+follows. (Adding standard errors to the plot makes it too complex to
 interpret, but SEs are fairly large. We have too little data for most
 sites to evaluate trend.)
 
@@ -733,27 +726,11 @@ emmip(lim_wlm, site ~ doy, variable = 'doy', type = 'predict',
 
 <img src="DEP_Irradiance_Analysis_files/figure-gfm/interaction_plot-1.png" style="display: block; margin: auto;" />
 
-``` r
-emtrends(lim_wlm, ~site, var = 'doy', type = 'predict',
-      at = list(doy = seq(100, 300, by = 10))) %>%
-  as_tibble() %>%
-  arrange(doy.trend)
-#> # A tibble: 9 x 6
-#>   site  doy.trend       SE    df lower.CL  upper.CL
-#>   <fct>     <dbl>    <dbl> <dbl>    <dbl>     <dbl>
-#> 1 PR-17 -0.00344  0.000867   207 -0.00515 -0.00174 
-#> 2 PR-28 -0.00329  0.00101    207 -0.00528 -0.00130 
-#> 3 PRV70 -0.00184  0.000822   207 -0.00346 -0.000219
-#> 4 CBPR  -0.000797 0.000962   207 -0.00269  0.00110 
-#> 5 EEB18 -0.000466 0.00101    207 -0.00245  0.00152 
-#> 6 P7CBI  0.000663 0.00137    207 -0.00203  0.00336 
-#> 7 BMR02  0.000708 0.00108    207 -0.00142  0.00284 
-#> 8 P6FGG  0.000921 0.00138    207 -0.00181  0.00365 
-#> 9 FR09   0.000922 0.00125    207 -0.00153  0.00338
-```
-
 Remember that sites are ordered by mean k value, so values are highest
 at the Presumpscot stations, and lowest at the Fore River station.
+
+Remember, this model left out nonlinearities in response to day of year
+response at PRV70, hiding a seasonal pattern there.
 
 The Presumpscot River stations see improvements in light penetration
 over the course of the spring and summer. They are among our sites with
@@ -765,11 +742,11 @@ Unfortunately, for most sites (not shown in this restricted data set),
 we have data from too few dates for seasonal relationships to be taken
 seriously. A few sites show apparent seasonal trends, based on just a
 handful of dates from one year. While those sites influence model
-selection, the reality is, the trends can’t be trusted. We need to leave
-those sites out of any analysis that looks at seasonal patterns.
-
-This model left out nonlinearities in response to day of year response
-at PRV70, hiding a seasonal pattern there.
+selection, the reality is, the trends can’t be trusted. We would have to
+leave those sites out of any analysis that looks at seasonal patterns,
+so we need to chose whether to model seasonal trends or include all
+sites in the analysis. We chose to include all sites, and thus must omit
+the seasonal predictor from the models.
 
 ``` r
 plot(emms_w) + 
@@ -792,10 +769,9 @@ plot(emms_small) +
 <img src="DEP_Irradiance_Analysis_files/figure-gfm/plot_emm_small-1.png" style="display: block; margin: auto;" />
 
 There is no apparent difference in the qualitative meaning we might draw
-from these two models. We can look more closely by formally comparing
-model predictions and “marginal means”.
+from these two models.
 
-### Compare Marginal and Observed Means
+### Compare Model Estimates and Observed Means
 
 #### Unweighted to Observed
 
@@ -1071,7 +1047,7 @@ better than no estmates at all.
 #### Compare Hierarchical Model To Weighted Linear Model
 
 ``` r
-results <- as_tibble(emms_small_all) %>%
+results <- as_tibble(emms_small) %>%
   left_join(as_tibble(emms_hm), by = 'site') %>%
   rename(lm_est = response.x,
          lm_se = SE.x,
@@ -1113,13 +1089,8 @@ results <- as_tibble(emms_hm) %>%
          em_se = SE,
          light_observs = k_n_tot,
          k_observs = k_vals) %>% 
-  relocate(site, site_name, k_mean, k_se, k_observs, light_observs)
+  relocate(site, site_name, k_mean, k_se, k_gm, k_observs, light_observs)
 ```
-
-# Consider Robust Linear Models Instead?
-
-The function `rlm()` fro, `MASS` may handle the location-scale problems
-better.
 
 # Export Results for GIS
 
@@ -1175,21 +1146,3 @@ results %>%
 ```
 
 <img src="DEP_Irradiance_Analysis_files/figure-gfm/point_chart_marginal-1.png" style="display: block; margin: auto;" />
-
-## Bar Chart From Hierarchical Model
-
-``` r
-results %>%
-  mutate(site = fct_reorder(site, em_mn)) %>%
-  ggplot(aes(site, em_mn)) +
-  geom_col(fill = cbep_colors()[4]) +
-  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL)) +
-  
-  theme_cbep(base_size = 12) +
-  ylab(expression(paste('k (',  m^-1, ')', sep = ''))) +
-  xlab('Station') +
-  
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.25))
-```
-
-<img src="DEP_Irradiance_Analysis_files/figure-gfm/bar_chart_marginal-1.png" style="display: block; margin: auto;" />

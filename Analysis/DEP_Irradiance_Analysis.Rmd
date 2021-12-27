@@ -65,7 +65,6 @@ linear model.
 
 #Load Libraries
 ```{r libraries}
-#library(readxl)
 library(tidyverse)
 
 library(GGally)
@@ -80,11 +79,9 @@ theme_set(theme_cbep())
 # Load Data
 # Folder References
 ```{r folder_refs}
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
-
-#dir.create(file.path(getwd(), 'figures'), showWarnings = FALSE)
 ```
 
 # Load Data
@@ -183,13 +180,19 @@ precision we will over-represent low-precision high values in any regression.
 
 Given the strong heteroskedasticity and scale-location relationship (even 
 after log transformation of the K data), simple linear regressions are 
-likely to be problematic.  Weighted analyses are likely to also be
-challenging, as it is not immediately obvious how to weight each estimate of
-k if we analyze log-transformed data, which appears essential here.
+likely to be problematic.  Weighted analyses are likely perform better.
 
 ## Means and SE of k by Site
 These are "raw" estimates and do not account for the uncertainty of individual
 estimates of K, as reflected in the standard errors  (`k_se`) in the data.
+
+### Create Geometric Mean Function
+```{r gm_mean_function}
+gm_mean <- function(x) {
+  exp(mean(log(x), na.rm = TRUE))
+}
+```
+
 
 ```{r mean_k-by_site}
 k_means <- k_data %>%
@@ -198,7 +201,8 @@ k_means <- k_data %>%
             k_n_tot = sum(k_n),
             k_vals  =  sum(! is.na(k_est)),
             k_mean  = mean(k_est),
-            k_se    = sd(k_est)/sqrt(sum(! is.na(k_est)))) %>%
+            k_se    = sd(k_est)/sqrt(sum(! is.na(k_est))),
+            k_gm    = gm_mean(k_est)) %>%
   relocate(site_name)
 k_means
 ```
@@ -223,18 +227,27 @@ These are areas with  high levels of suspended sediments.
 Most Fore River sites show low light attenuation. This presumably reflects the 
 high influence of offshore tidal waters on water quality around Portland.
 
-Time of year matters relatively little for most sites, but it does appear to be significant for some of the sites where we have more data, and (suspiciously)
+Time of year matters relatively little for most sites, but it does appear to be
+significant for some of the sites where we have more data, and (suspiciously)
 for a few where we have very little data.
 
-Seasonal patterns are not consistent among  sites. In most cases, light attenuation  drops slightly over the course of the summer. The upper Presumpscot River site shows an s shaped pattern with time of year, first increasing, then decreasing and leveling off.
+Seasonal patterns are not consistent among  sites. In most cases, light 
+attenuation  drops slightly over the course of the summer. The upper Presumpscot 
+River site shows an s shaped pattern with time of year, first increasing, then 
+decreasing and leveling off.
 
 We can fit models looking at light attenuation coefficients by site, year and
 day of the year, but site PRV70 shows a complex seasonal pattern, while other
-sites do not appear to do so.  That forces any single large model that fully accommodates seasonal patterns to be fairly complex.  We focus on linear terms,
-even though that underfits the pattern occurring on the Presumpscot.
+sites do not appear to do so.  That forces any single large model that fully
+accommodates seasonal patterns to be fairly complex.
 
 # Analysis 
-## Strategy Questions
+A log transform helps with model diagnostics, although it does not completely
+eliminate skewness in the residuals or a marked location-scale relationship.  We
+extract predicted values from our regressions by back transforming from the log
+transform, thus making predictions akin to geometric means.
+
+## Strategy
 We have two main considerations here:
 
 1.  Should we use weighted regressions?  We have standard error estimates for
@@ -245,8 +258,9 @@ We have two main considerations here:
     uncertainty from our better sampled sites to enhance uncertainty estimates 
     for the less well studied sites?
 
-We test both approaches by looking only at sites for which we have substantial
-data.
+We tested both approaches by looking only at sites for which we have substantial
+data.  We then applied our preferred model(s) to the full data set.  Here we 
+skip the preliminary models.
 
 ## Linear Models
 ### Unweighted Models
@@ -291,22 +305,18 @@ sites models show strong location-scale patterns.
 
 ### Weighted Models
 In a conventional weighted linear model, we would weight observations by the 
-inverse of their estimated standard errors, but here we are taking the log
-transform of our estimates, and conducting regressions on those values.  If 
-we weight based on squared standard error, we will overstate uncertainty for
-our high uncertainty samples, especially the high K estimates.
+inverse of their estimated variances, but here we are taking the log
+transform of our estimates, and conducting regressions on those values.
 
 Ideally, we want to weight by the square of the estimated standard error of the 
 log of K.  We do not have that estimate, so we substitute the square of the log
 of the standard error of K. That is not a mathematical identity, but it should
-produce a weighted regression that performs better than using no weighting at 
-all.  An alternative would be to formally model the location-scale relationship,
-but I believe this makes better use of our knowledge of model uncertainty that
-underlies our estimates of k.
+produce a weighted regression that performs adequately.  An alternative would be
+to formally model the location-scale relationship, but I believe this makes
+better use of our knowledge of model uncertainty that underlies our estimates of
+k.
 
 ```{r weighted_models}
-full_wlm <- lm(log(k_est) ~ factor(year) +  doy + site + site:doy, 
-              weights = 1/(log(k_se)^2), data = k_data)
 lim_wlm <- lm(log(k_est) ~ factor(year) +  doy + site + site:doy, 
               weights = 1/(log(k_se)^2), data = k_data,
              subset = site %in% preferred_sites)
@@ -321,7 +331,10 @@ summary(lim_wlm)
 ```
 
 The general conclusions are similar. Time of year matters at several our 
-riverine sites. Some years are better than others.  Sites differ, with sites influenced by freshwater likely to have higher light extinction coefficients.  (Notice that standard errors are slightly higher in this model, because of the weighting. That is expected)
+riverine sites. Some years are better than others.  Sites differ, with sites
+influenced by freshwater likely to have higher light extinction coefficients.
+(Notice that standard errors are slightly higher in this model, because of the
+weighting. That is expected.)
 
 ```{r diagnostics_wm}
 oldpar <- par(mfrow = c(2,2))
@@ -342,8 +355,6 @@ main interest here.
 small_wlm <- lm(log(k_est) ~ factor(year) +  site , 
               weights = 1/(log(k_se)^2), data = k_data,
               subset = site %in% preferred_sites)
-small_wlm_all <- lm(log(k_est) ~ factor(year) +  site , 
-              weights = 1/(log(k_se)^2), data = k_data)
 ```
 
 ```{r anova_sum_small_lm}
@@ -362,22 +373,21 @@ high leverage, the scale-location relationship is still strong.
 
 ### "Adjusted" Means by Site
 ```{r calc_marginal_means}
-emms_full <- emmeans(full_wlm, 'site', at = list(doy = 200), type = 'response')
-emms_small_all <- emmeans(small_wlm_all, 'site', at = list(doy = 200), 
-                       type = 'response')
-
+cat("Unweighted Linear Model\n")
+(emms_uw <- emmeans(lim_lm, 'site', at = list(doy = 200), type = 'response'))
+cat("Weighted Linear Model\n")
 (emms_w <- emmeans(lim_wlm, 'site', at = list(doy = 200), type = 'response'))
+cat("Simpler Weighted Linear Model\n")
 (emms_small <- emmeans(small_wlm, 'site', at = list(doy = 200), 
                        type = 'response'))
-
-(emms_uw <- emmeans(lim_lm, 'site', at = list(doy = 200), type = 'response'))
 ```
 
-All models are producing similar results.
+All models are producing similar results.  Differences are just large enough to 
+be of interest.  
 
 #### Importance of Interactions?
 We have to take the warnings about interactions seriously. The interaction
-is with day of the year. We can visualize the patterns like this.  (Adding
+is with day of the year. We can visualize the patterns as follows.  (Adding
 standard errors to the plot makes it too complex to interpret, but SEs are 
 fairly large.  We have too little data for most sites to evaluate trend.)
 
@@ -387,15 +397,11 @@ emmip(lim_wlm, site ~ doy, variable = 'doy', type = 'predict',
   theme_cbep()
 ```
 
-```{r marginal_trends}
-emtrends(lim_wlm, ~site, var = 'doy', type = 'predict',
-      at = list(doy = seq(100, 300, by = 10))) %>%
-  as_tibble() %>%
-  arrange(doy.trend)
-```
-
 Remember that sites are ordered by mean k value, so values are highest at the 
 Presumpscot stations, and lowest at the Fore River station.
+
+Remember, this model left out nonlinearities in response to day of year response
+at PRV70, hiding a seasonal pattern there.
 
 The Presumpscot River stations see improvements in light penetration over the
 course of the spring and summer. They are among our sites with the highest k
@@ -407,11 +413,10 @@ Unfortunately, for most sites (not shown in this restricted data set), we have
 data from too few dates for seasonal relationships to be taken seriously.  A
 few sites show apparent seasonal trends, based on just a handful of dates from
 one year. While those sites influence model selection, the reality is, the
-trends can't be trusted.  We need to leave those sites out
-of any analysis that looks at seasonal patterns.
-
-This model left out nonlinearities in response to day of year response at PRV70,
-hiding a seasonal pattern there.
+trends can't be trusted.  We would have to leave those sites out of any analysis
+that looks at seasonal patterns, so we need to chose whether to model seasonal
+trends or include all sites in the analysis.  We chose to include all sites,
+and thus must omit the seasonal predictor from the models.
 
 ```{r plot_emm_full}
 plot(emms_w) + 
@@ -430,10 +435,9 @@ plot(emms_small) +
 ```
 
 There is no apparent difference in the qualitative meaning we might draw from
-these two models.  We can look more closely by formally comparing model
-predictions and "marginal means".
+these two models.
 
-### Compare Marginal and Observed Means
+### Compare Model Estimates and Observed Means
 #### Unweighted to Observed
 ```{r compare_unweighted}
 results <- as_tibble(emms_uw) %>%
@@ -560,7 +564,6 @@ ggplot(results, aes(w_est, uw_est)) +
 The weighted model alters estimates slightly, (Leading to slightly lower
 estimates of means) but it makes no real difference to qualitative conclusions.
 
-
 So  For the sites where have substantial data:  
 1.  The "adjusted" marginal means (of several log models) are very close to the 
     raw means.  
@@ -625,7 +628,7 @@ should be viewed with skepticism, but they are better than no estmates at all.
 
 #### Compare Hierarchical Model To Weighted Linear Model
 ```{r compare_hm_to wm}
-results <- as_tibble(emms_small_all) %>%
+results <- as_tibble(emms_small) %>%
   left_join(as_tibble(emms_hm), by = 'site') %>%
   rename(lm_est = response.x,
          lm_se = SE.x,
@@ -662,11 +665,8 @@ results <- as_tibble(emms_hm) %>%
          em_se = SE,
          light_observs = k_n_tot,
          k_observs = k_vals) %>% 
-  relocate(site, site_name, k_mean, k_se, k_observs, light_observs)
+  relocate(site, site_name, k_mean, k_se, k_gm, k_observs, light_observs)
 ```
-
-# Consider Robust Linear Models Instead?
-The function `rlm()` fro, `MASS` may handle the location-scale problems better.
 
 # Export Results for GIS
 ```{r save_results}
@@ -710,21 +710,6 @@ results %>%
   theme_cbep(base_size = 12) +
   ylab(expression(paste('k (',  m^-1, ')', sep = ''))) +
   xlab('') +
-  
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.25))
-```
-
-## Bar Chart From Hierarchical Model
-```{r bar_chart_marginal}
-results %>%
-  mutate(site = fct_reorder(site, em_mn)) %>%
-  ggplot(aes(site, em_mn)) +
-  geom_col(fill = cbep_colors()[4]) +
-  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL)) +
-  
-  theme_cbep(base_size = 12) +
-  ylab(expression(paste('k (',  m^-1, ')', sep = ''))) +
-  xlab('Station') +
   
   theme(axis.text.x = element_text(angle = 90, vjust = 0.25))
 ```
