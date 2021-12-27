@@ -1,7 +1,7 @@
 ---
 title: "Analysis of Maine DEP Nutrient Data from Casco Bay"
 author: "Curtis C. Bohlen, Casco Bay Estuary Partnership."
-date: "04/26/2021"
+date: "12/27/2021"
 output:
   github_document:
     toc: true
@@ -33,6 +33,10 @@ sampling dates.
 
 All data is relatively recent, so we do not attempt any trend analysis.
 
+For the most part, these data are presented in SoCB only in summary form, including
+data gathered by Friends of Casco Bay.  For details, see the companion 
+[Combined_Nutrients_sum repository](https://github.com/CBEP-SoCB/Combined_Nutrients_sum.git).
+
 #Load Libraries
 ```{r load_libraries}
 library(tidyverse)
@@ -51,7 +55,7 @@ theme_set(theme_cbep())
 
 # Folder References
 ```{r folder_refs}
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
 
@@ -215,6 +219,9 @@ tmp <- core_data %>%
 ggpairs(log(tmp), progress = FALSE)
 ```
 
+Nitrogen metrics are all correlated, although mostly weakly.  P metrics are 
+correlated, also weakly.  But N is not correlated with P.
+
 ### Ternary Diagrams
 ```{r calc_proportions}
 proportion_data <- core_data %>%
@@ -262,6 +269,9 @@ legend('topleft', ncol = 1,
         col = cbep_colors())
 ```
 
+It is not obvious that he data flags here are causing a major change in how we
+might evaluate the data, so we move on.
+
 ##### Colored by Site
 ```{r ternary_site, fig.width = 5, fig.height = 5}
 pal = viridis(9, alpha=0.5)
@@ -278,6 +288,9 @@ legend('topleft', ncol = 1,
         pch = 20,
         col = pal)
 ```
+
+There is clearly pattern there, but hte Viridis color scale is really more 
+suited for continuous color scale, not a discrete color scale, as here.
 
 ##### Produce PDF
 We have slightly more control of size when we specify the graphics 
@@ -414,7 +427,7 @@ emmip(core_din_lm, month ~ yearf,
 ```
 
 So, those interactions are unlikely to be due to "chance", but they well may be 
-due to annual or seasonal autocorrelations.  They so not dominate the patterns
+due to annual or seasonal autocorrelations.  They do not dominate the patterns
 among sites, which is our focus here.  A hierarchical model would be better.
 For now, we advance with the reduced complexity model that omits the 
 interactions.
@@ -466,11 +479,16 @@ The log transform here was a bit too strong, but the diagnostics are not
 dreadful.
 
 ### GAM Model
+We run a hierarchical model that treats each year as a random factor.  The GAM
+here also fis a seasonal (Day of Year) smoother, which may be overkill given 
+the uneven sampling histories we have.
 ```{r din_gam}
 core_din_gam <- gam(log(din) ~ site + s(doy, k = 5) + 
                           s(yearf, bs = 're'), data = core_data)
 anova(core_din_gam)
 ```
+
+Site remains an important predictor, and os are year and season.
 
 ```{r view_din_gam}
 plot(core_din_gam)
@@ -485,7 +503,7 @@ par(oldpar)
 Those diagnostics are pretty good....
 
 #### Marginal Means
-The marginal means fit  with no specification for the day of year fills in the
+The marginal means fit with no specification for the day of year fills in the
 day of the year with the observed mean day of the year, Julian Day ~ 216, which
 is early August. That corresponds to roughly the lowest annual level for TN.
 
@@ -494,6 +512,13 @@ observed means and geometric means.  One can  ameliorate that by specifying
 `cov.keep = 'doy`, which has the effect of averaging across all the actual dates 
 on which data was collected, or specifying `at = list(doy = c(seq(130,290,10))`,
 which averages over a regular grid of days of year across the sampling season.
+We prefer the last option for our purpose, which is to compare "typical" levels
+at each site.  (Note this is only marginally O.K., since the actual seasonal 
+patterns of variation may not be similar at all sites -- especially those sites 
+strongly influenced by river inputs.)
+
+WE show all three options, to clarify, but only keep the last option for
+further processing.
 
 ```{r extract_din_gam_marginal_means}
 emmeans(core_din_gam, 'site', nesting = NULL, type = 'response')
@@ -511,11 +536,10 @@ plot(core_din_emms_gam) + coord_flip() +
   geom_point(data = core_results, aes(y = site, x = din_gm),
              color = 'yellow')
 ```
-Model Predictions are well below observed means.  It's not entirely clear....
-
-Differences between model predictions and observed means are almost entirely
-because the model is predicting geometric, not arithmetic means. The model's
-adjusted geometric means line up well with observed geometric means.
+Model Predictions are well below observed means.  Again, we see that differences
+between model predictions and observed means are almost entirely because the
+model is predicting geometric, not arithmetic means. The model's adjusted
+(geometric) means line up well with observed geometric means.
 
 #### Compare to Observed Means
 ```{r compare_din_gam_observed}
@@ -547,16 +571,20 @@ plt <- ggplot(core_data, aes(tn)) +
   theme_cbep(base_size = 10) +
   theme(legend.position = 'None') +
   geom_vline(xintercept = 0.35, col = 'grey35') +
-  geom_vline(xintercept = 0.6, col = 'grey35')
+  geom_vline(xintercept = 0.45, col = 'grey35')
 plt
 ```
 
-The practical difference between eelgrass-oriented standards at about
-0.35 mg/l versus dissolved oxygen standards at about 0.6 mg/l could be huge.
+The practical difference between eelgrass-oriented standards at about 0.35 mg/l
+versus dissolved oxygen standards at about 0.45 mg/l could be large.
 
 ```{r tn_histograms}
 plt + facet_wrap(~site)
 ```
+
+We note that the PResumpscot River sites exceed both standards more often 
+than other sites.
+
 
 ### Draft Graphic
 ```{r tn_graphic, fig.height = 4, fig.width = 5}
@@ -580,23 +608,18 @@ ggsave('figures/tn_by_site.pdf', device = cairo_pdf, width = 6, height = 4)
 ```
 
 ### Linear Models
+#### Full Model
 ```{r tn_lm_1}
 core_tn_lm_full <- lm(log(tn) ~ (site + month + yearf)^2, data = core_data)
 anova(core_tn_lm_full)
 ```
-
+#### Stepwise Model Selection
 ```{r tn_lm_2}
 core_tn_lm <- step(core_tn_lm_full)
 anova(core_tn_lm)
 
 ```
 
-```{r tn_lm_3}
-core_tn_lm_red <- lm(log(tn) ~ site + month + yearf, data = core_data)
-anova(core_tn_lm_red)
-```
-
-#### Marginal Means
 ```{r tn_lm_interaction}
 emmip(core_tn_lm, month ~ yearf,
       type = 'response')
@@ -605,6 +628,16 @@ emmip(core_tn_lm, month ~ yearf,
 So, those interactions are unlikely to be due to "chance", but they well may be 
 due to annual or seasonal autocorrelations.  A hierarchical model may be better.
 For now, we advance with the reduced complexity model that omits the interactions.
+
+Again, we see significant month by year interactions, but for our purposes, we
+are not interested in those variations, as we want to understand seasonal
+patterns regardless of year to year variation.
+
+#### Reduced Model
+```{r tn_lm_3}
+core_tn_lm_red <- lm(log(tn) ~ site + month + yearf, data = core_data)
+anova(core_tn_lm_red)
+```
 
 ```{r extract_tn_lm_marginal_means}
 core_tn_emms_lm <- emmeans(core_tn_lm_red, 'site', type = 'response')
@@ -668,20 +701,17 @@ gam.check(core_tn_gam)
 par(oldpar)
 ```
 
+Again, diagnostics look O.K, although there is a dearth of high residuals, and 
+one should not take these diagnostics too seriously on a hierarchical model...
+
 #### Marginal Means
 The marginal means fit  with no specification for the day of year fills in the
 day of the year with the observed mean day of the year, Julian Day ~ 216, which
-is early August. That corresponds to roughly the lowest annual level for TN.
-
-The result is that the default marginal means are substantially lower than
-observed means and geometric means.  One can  ameliorate that by specifying 
-`cov.keep = 'doy`, which has the effect of averaging across all the actual dates 
-on which data was collected, or specifying `at = list(doy = c(seq(130,290,10))`,
-which averages over a regular grid of days of year across the sampling season.
+is early August. That corresponds to roughly the lowest annual level for TN. We 
+specify `at = list(doy = c(seq(130,290,10))`, which averages over a regular grid 
+of days of year across the sampling season.
 
 ```{r extract_tn_gam_marginal_means}
-emmeans(core_tn_gam, 'site', nesting = NULL, type = 'response')
-emmeans(core_tn_gam, 'site', cov.keep = 'doy', type = 'response')
 (core_tn_emms_gam <- emmeans(core_tn_gam, 'site', 
                              at = list(doy = seq(130,290,10)),
                              type = 'response'))
@@ -715,11 +745,8 @@ ggplot(compare, aes(tn_mn, response)) +
 Here the lower values from the GAM model are because we are implicitly comparing 
 estimated geometric means to arithmetic means.
 
-# N to P Ratios
-Generally, our N:P ratios are well below 15, suggesting continued N limitation.
-Is that worth reporting on?  There may be N:P ratio variation between sites.
-
-### Histograms / Distributions
+# N to P Ratio
+## Histograms 
 ```{r n2p_histogram}
 core_data <- core_data %>%
   mutate(n_to_p = tn/tp)
@@ -732,10 +759,15 @@ plt <- ggplot(core_data, aes(n_to_p)) +
   scale_x_log10() +
   theme_cbep(base_size = 10) +
   theme(legend.position = 'None') +
-  geom_vline(xintercept = 15,col = 'grey35')
+  geom_vline(xintercept = 15, col = 'grey35')
 
 plt +  facet_wrap (~site)
 ```
+
+Generally, our N:P ratios are well below 15, suggesting continued N limitation.
+Values slightly over 15 occur at most sites, and values over 20 occur 
+sporadically. We may have periodic P limitations, especially at some of our
+estuarine sites along the Presumpscot.
 
 ### Descriptive Statistics
 ```{r core_n2p_results}
@@ -774,7 +806,9 @@ ggplot(core_data, aes(n_to_p, short_name)) +
 ggsave('figures/n_to_p_by_site.pdf', device = cairo_pdf, width = 6, height = 4)
 ```
 
-It's clear there is a seasonal pattern in N to P ratios.
+It's clear there is a seasonal pattern in N to P ratios, with the highest ratios
+ocurring in the spring.  Again, we may see sporadic P limitation in spring
+especially at our estuarine sites.
 
 ### GAM Model
 We are not fitting a year random effect here, because we have data from only 
@@ -819,7 +853,7 @@ plot(core_n2p_emms_gam) + coord_flip() +
 ```
 
 The sites show statistically significant differences as a group, but with
-those large error bands, most pairwise comparisons will not be significant.
+those large error bands, pairwise comparisons will not be significant.
 
 ```{r plot_n2p_gam_marginals_doy}
 plot(core_n2p_emms_gam_doy) + coord_flip() + 
@@ -864,9 +898,8 @@ tmp %>%
   ggpairs(progress = FALSE)
 ```
 
-We see a lot of samples with phaeophytin well above chlorophyll levels.
-that is not impossible, but noteworthy.  It's worth looking at the scatter plot
-with a 1:1 reference line. 
+We see a lot of samples with phaeophytin well above chlorophyll levels.  It's 
+worth looking at the scatter plot with a 1:1 reference line. 
 
 ```{r chl_scatter_plot}
 tmp <- core_data %>%
@@ -885,6 +918,8 @@ ggplot(tmp, aes(chl, phaeo, color = site)) +
   scale_color_viridis_d(name = '') +
   theme_cbep(base_size = 12)
 ```
+So, the samples with Phaeophytin above chlorophyll levels are all from our
+Presumscot sites, with and all have relatively high TN values.
 
 # Chlorophyll and Nutrients
 ```{r chl_nutrients_pairs,  fig.width = 7, fig.height = 7}
@@ -897,8 +932,7 @@ tmp %>%
   ggpairs(progress = FALSE)
 ```
 
-Interestingly, The strongest correlation between chlorophyll and nutrients is
-with TP, not TN....   Phaeophytin is correlated with Total N and organic N as
-well. Total suspended solids is  correlated with most metrics, suggesting it is
-functioning here as a surrogate for plankton abundance, which will be correlated
-with everything.
+Interestingly, The only positive correlation between chlorophyll and nutrients is
+with TP, not TN. The relationship with TN, in fact, is negative, and even more
+strongly so with DIN. Phaeophytin is correlated with Total N and organic N as
+well.
