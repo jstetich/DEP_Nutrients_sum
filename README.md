@@ -27,6 +27,11 @@ are omitted here, but are available in a companion
 Data should be interpreted with the understanding that it is
 drawn from multiple studies, using sometimes different methods.  
 
+In this repository, we include code for a number of analyses of DEP data that
+did not ultimately get incorporated into the State of Casco Bay Report,
+including analysis of light attenuation data and graphical summaries of vertical 
+profile data.
+
 # Statement of Purpose
 CBEP is committed to the ideal of open science.  Our State of the Bay data
 archives ensure the science underlying the 2020/2021 State of Casco Bay report
