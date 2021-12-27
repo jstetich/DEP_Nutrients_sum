@@ -1,7 +1,7 @@
 Graphics of Maine DEP Nutrient Data from Casco Bay, Maine
 ================
 Curtis C. Bohlen, Casco Bay Estuary Partnership.
-04/26/2021
+12/27/2021
 
 -   [Introduction](#introduction)
 -   [Folder References](#folder-references)
@@ -37,26 +37,19 @@ maps.
 
 ``` r
 library(tidyverse)
-#> Warning: package 'tidyverse' was built under R version 4.0.5
 #> -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
-#> v ggplot2 3.3.3     v purrr   0.3.4
-#> v tibble  3.1.2     v dplyr   1.0.6
-#> v tidyr   1.1.3     v stringr 1.4.0
-#> v readr   1.4.0     v forcats 0.5.1
-#> Warning: package 'tidyr' was built under R version 4.0.5
-#> Warning: package 'dplyr' was built under R version 4.0.5
-#> Warning: package 'forcats' was built under R version 4.0.5
+#> v ggplot2 3.3.5     v purrr   0.3.4
+#> v tibble  3.1.6     v dplyr   1.0.7
+#> v tidyr   1.1.4     v stringr 1.4.0
+#> v readr   2.1.1     v forcats 0.5.1
 #> -- Conflicts ------------------------------------------ tidyverse_conflicts() --
 #> x dplyr::filter() masks stats::filter()
 #> x dplyr::lag()    masks stats::lag()
 library(viridis)  # Normally not called directly, but we need it for the ternary
-#> Warning: package 'viridis' was built under R version 4.0.5
 #> Loading required package: viridisLite
-#> Warning: package 'viridisLite' was built under R version 4.0.5
                   # plot color scale.
 
 library(Ternary) # Base graphics ternary plots
-#> Warning: package 'Ternary' was built under R version 4.0.5
 
 library(CBEPgraphics)
 load_cbep_fonts()
@@ -66,7 +59,7 @@ theme_set(theme_cbep())
 # Folder References
 
 ``` r
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
 
@@ -130,15 +123,14 @@ surface_data <- surface_data %>%
 ``` r
 site_names <- read_csv(file.path(sibling, "GIS", 'dep_locations.csv')) %>%
   select(site, short_name)
-#> 
+#> Rows: 44 Columns: 5
 #> -- Column specification --------------------------------------------------------
-#> cols(
-#>   site_name = col_character(),
-#>   short_name = col_character(),
-#>   site = col_character(),
-#>   Latitude = col_double(),
-#>   Longitude = col_double()
-#> )
+#> Delimiter: ","
+#> chr (3): site_name, short_name, site
+#> dbl (2): Latitude, Longitude
+#> 
+#> i Use `spec()` to retrieve the full column specification for this data.
+#> i Specify the column types or set `show_col_types = FALSE` to quiet this message.
 surface_data <- surface_data %>%
   left_join(site_names, by = 'site') %>%
   relocate(short_name, .after = site)

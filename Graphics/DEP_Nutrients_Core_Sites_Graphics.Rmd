@@ -1,7 +1,7 @@
 ---
 title: "Graphics of Maine DEP Nutrient Data from Casco Bay, Maine"
 author: "Curtis C. Bohlen, Casco Bay Estuary Partnership."
-date: "04/26/2021"
+date: "12/27/2021"
 output:
   github_document:
     toc: true
@@ -42,7 +42,7 @@ theme_set(theme_cbep())
 
 # Folder References
 ```{r folder_refs}
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
 
@@ -87,7 +87,6 @@ surface_data <- dep_data %>%
   mutate(doy = as.numeric(format(sample_date, format = '%j'))) %>%
   relocate(yearf, doy, .after = year)
 ```
-
 
 There are a few sky-high NH4 values, at nominal concentrations of 0.4 or 4.0 
 mg.l NH4-N.  All are flagged as "censored" (despite high values) and 
@@ -170,7 +169,6 @@ core_results <- core_data %>%
          short_name = fct_reorder(factor(short_name), tn_md))
 ```
 
-
 ## TN  Graphic
 ```{r tn_graphic, fig.height = 4, fig.width = 3.5}
 plt <- ggplot(core_data, aes(tn, short_name)) +
@@ -221,7 +219,6 @@ plt
 
 ggsave('figures/din_by_site.pdf', device = cairo_pdf, width = 3.5, height = 4)
 ```
-
 
 # N to P Ratios
 Generally, our N:P ratios are well below 15, suggesting continued N limitation.
