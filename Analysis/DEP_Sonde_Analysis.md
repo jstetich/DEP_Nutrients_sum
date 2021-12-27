@@ -13,10 +13,11 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership.
 -   [Review of Sonde Data](#review-of-sonde-data)
     -   [How often was each site
         sampled?](#how-often-was-each-site-sampled)
+        -   [How Many Years Each Site?](#how-many-years-each-site)
+        -   [How Many Sites Each Year?](#how-many-sites-each-year)
+        -   [Number of Samples Each Year](#number-of-samples-each-year)
 -   [Analysis Goals and
     Considerations](#analysis-goals-and-considerations)
--   [Save List of High Frequency Sonde
-    Sites](#save-list-of-high-frequency-sonde-sites)
     -   [Restrict\_data](#restrict_data)
 -   [Graphical Review](#graphical-review)
     -   [Seasonal Variation](#seasonal-variation)
@@ -26,14 +27,6 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership.
         -   [Percent Saturation](#percent-saturation)
         -   [Chlorophyll](#chlorophyll)
         -   [Turbidity](#turbidity)
--   [Presumpscort Estuary Series](#presumpscort-estuary-series)
-    -   [Dot Plot Examples](#dot-plot-examples)
-        -   [Salinity Plot May](#salinity-plot-may)
-        -   [Salinity Plot September
-            2018](#salinity-plot-september-2018)
-        -   [Salinity, September](#salinity-september)
-        -   [Dissolved Oxygen, September](#dissolved-oxygen-september)
-        -   [Chlorophyll, September](#chlorophyll-september)
 
 <img
     src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
@@ -48,39 +41,35 @@ less interest, as we expect variation by depth, time, and location.
 Unexplained variation is also fairly common.
 
 Here we focus on producing graphical summaries of the DEP sonde downcast
-data, looking at:
-
-1.  Variation by time of year for each site and year, and
-
-2.  Patterns along a spatial transect from the head of the Presumpscot
-    estuary to out past the mouth of Portland Harbor.
+data, looking at variation by time of year for each site and year, and
 
 We make use of a small graphics package we produced, `tdggraph`, that
 encapsulates some of the logic needed to generate time by depth graphics
 succinctly. That package is available
 [here](https://github.com/CBEEP-SoCB/tdggraph).
 
+We examine patterns along spatial transects from the head of the
+Presumpscot estuary to out past the mouth of Portland Harbor, and along
+the Royal River in a companion [GitHub
+repository](https://github.cm/CBEP-SoCB/Bat_Stratification_sum.git).  
+That archive takes the ideas we examine here and develops them more
+fully.
+
 \#Load libraries
 
 ``` r
 #library(readxl)
 library(tidyverse)
-#> Warning: package 'tidyverse' was built under R version 4.0.5
 #> -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
 #> v ggplot2 3.3.5     v purrr   0.3.4
 #> v tibble  3.1.6     v dplyr   1.0.7
 #> v tidyr   1.1.4     v stringr 1.4.0
-#> v readr   2.1.0     v forcats 0.5.1
-#> Warning: package 'ggplot2' was built under R version 4.0.5
-#> Warning: package 'tidyr' was built under R version 4.0.5
-#> Warning: package 'dplyr' was built under R version 4.0.5
-#> Warning: package 'forcats' was built under R version 4.0.5
+#> v readr   2.1.1     v forcats 0.5.1
 #> -- Conflicts ------------------------------------------ tidyverse_conflicts() --
 #> x dplyr::filter() masks stats::filter()
 #> x dplyr::lag()    masks stats::lag()
 
 library(GGally)
-#> Warning: package 'GGally' was built under R version 4.0.5
 #> Registered S3 method overwritten by 'GGally':
 #>   method from   
 #>   +.gg   ggplot2
@@ -96,7 +85,7 @@ library(tdggraph)
 # Folder References
 
 ``` r
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
 
@@ -173,8 +162,9 @@ here.
 
 # Review of Sonde Data
 
-Judging only by site codes, there may be some data overlap with the FOCB
-“profile” site downcast data. We have not double checked that yet.
+Judging only by site codes, it appears there could be some data overlap
+with the FOCB “profile” site downcast data. On close inspection,
+however, we found the two data sets are fully independent.
 
 ## How often was each site sampled?
 
@@ -188,11 +178,27 @@ tmp <- sonde_data %>%
 xt <- xtabs(~ year + site, data = tmp)
 ```
 
+### How Many Years Each Site?
+
+``` r
+colSums(xt)
+#>   BMR02    CBPR   CR-31   CR-44    CR00 CRTRIB0   EEB18    FR03    FR04   FR05A 
+#>       4       4       1       1       1       1       4       1       1       1 
+#>   FR05B    FR07    FR09    HR02    HR03    HR04    HR05    LC02   P6FGG   P7CBI 
+#>       1       1       5       1       1       1       1       1       3       3 
+#>   PR-17   PR-28   PRV70   RR-01   RR-06   RR-13   RR-19   RR-20 
+#>       3       4       4       1       2       2       2       1
+```
+
+### How Many Sites Each Year?
+
 ``` r
 rowSums(xt)
 #> 2016 2017 2018 2019 2020 
 #>   14   17    9    9    7
 ```
+
+### Number of Samples Each Year
 
 ``` r
 sonde_data %>%
@@ -227,19 +233,12 @@ times, making seasonal analysis problematic. In 2016, DEP samples
 focused on the Haraseeket and the Fore. In 2017, on the Royal and the
 Cousins.
 
-We may be able to get broader seasonal and geographic coverage based on
-FOCB profile sites.
-
 # Analysis Goals and Considerations
 
 There is no simple (one value) summary of profile data to derive and
-present in State of Casco Bay. Given space constraints, our primary use
-of these data is likely to be as examples showing vertical profiles in a
-side bar.
-
-We thus focus on graphical review of those high frequency sites and
-years, where we can look closely at profiles over the course of the
-season.
+present in State of Casco Bay. We thus focus on graphical review of
+those high frequency sites and years, where we can look closely at
+profiles over the course of the season.
 
 ``` r
 tmp <- sonde_data %>%
@@ -248,19 +247,13 @@ tmp <- sonde_data %>%
             .groups = 'drop')
 
 xt <- xtabs(~ dt + site, data = tmp)
-(tot <- colSums(xt))
-#>   BMR02    CBPR   CR-31   CR-44    CR00 CRTRIB0   EEB18    FR03    FR04   FR05A 
-#>      29      31       6       3       6       6      29       3       3       2 
-#>   FR05B    FR07    FR09    HR02    HR03    HR04    HR05    LC02   P6FGG   P7CBI 
-#>       1       3      31       3       5       5       3       3      17      16 
-#>   PR-17   PR-28   PRV70   RR-01   RR-06   RR-13   RR-19   RR-20 
-#>      25      31      30       6       8       8       5       3
+tot <- colSums(xt)
 (preferred_sites <- names(tot[tot > 15]))
 #> [1] "BMR02" "CBPR"  "EEB18" "FR09"  "P6FGG" "P7CBI" "PR-17" "PR-28" "PRV70"
 rm(tmp, xt, tot)
 ```
 
-We lose little by restricting ourselves to only the regularly sampled
+We lose little by restricting ourselves to only these regularly sampled
 sites.
 
 An alternative would be to look at all sites sampled regularly in some
@@ -268,13 +261,6 @@ single year, perhaps 2017.
 
 We focus on data from the high frequency sites sites, which may clarify
 what is going on.
-
-# Save List of High Frequency Sonde Sites
-
-``` r
-write_csv(tibble(site = preferred_sites), 
-          file.path(sibling, 'high_freq_sonde_sites.csv') )
-```
 
 ## Restrict\_data
 
@@ -366,7 +352,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-11-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2017-9.png" style="display: block; margin: auto;" />
 
 #### 2018
 
@@ -381,7 +367,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-12-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2018-9.png" style="display: block; margin: auto;" />
 
 #### 2019
 
@@ -396,7 +382,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-13-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2019-9.png" style="display: block; margin: auto;" />
 
 #### 2020
 
@@ -411,7 +397,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-14-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/t_2020-9.png" style="display: block; margin: auto;" />
 
 What we see is that vertical thermal structure is common, but generally
 not very strong at most sites. Temperatures change by a degree C every
@@ -465,7 +451,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-16-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2017-9.png" style="display: block; margin: auto;" />
 
 #### 2018
 
@@ -479,7 +465,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-17-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2018-9.png" style="display: block; margin: auto;" />
 
 #### 2019
 
@@ -493,7 +479,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-18-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2019-9.png" style="display: block; margin: auto;" />
 
 #### 2020
 
@@ -507,16 +493,14 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-19-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/s_2020-9.png" style="display: block; margin: auto;" />
 
 No real surprise. At all sites we see a tendency towards lower
 salinities in the spring and at shallower depths. But those differences
 are usually fairly small – just a few PPT.
 
 So, the combined effect of salinity and temperature is almost always to
-stabilize the water column, reducing vertical mixing. We do not have the
-capability to look at stability calculation in any detail for State of
-Casco Bay.
+stabilize the water column, reducing vertical mixing.
 
 ### Oxygen
 
@@ -556,7 +540,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-21-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2017-9.png" style="display: block; margin: auto;" />
 
 #### 2018
 
@@ -570,7 +554,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-22-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2018-9.png" style="display: block; margin: auto;" />
 
 #### 2019
 
@@ -584,7 +568,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-23-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2019-9.png" style="display: block; margin: auto;" />
 
 #### 2020
 
@@ -598,11 +582,12 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-24-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/do_2020-9.png" style="display: block; margin: auto;" />
 
 The strongest patterns for oxygen are seasonal. We do see some
 differentiation with depth at the deeper sites, especially P7CBI, FR09
-and PRV70.
+and PRV70. The lowest DO values observed did not occur in any of the
+regularly sampled sites, so data not shown.
 
 ### Percent Saturation
 
@@ -636,13 +621,13 @@ and PRV70.
 for (s in seq_along(nested$site))
   print(nested$pctsat2017[[s]] +
             scale_color_distiller(palette = 4, direction = 2, 
-                                  limits = c(90, 135)
+                                  limits = c(80, 135)
                                   ) +
           coord_cartesian(ylim = c(22,0)) +
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-26-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2017-9.png" style="display: block; margin: auto;" />
 
 #### 2018
 
@@ -650,13 +635,13 @@ for (s in seq_along(nested$site))
 for (s in seq_along(nested$site))
   print(nested$pctsat2018[[s]] +
             scale_color_distiller(palette = 4, direction = 2, 
-                                 limits = c(90, 135)
+                                 limits = c(80, 135)
                                   ) +
           coord_cartesian(ylim = c(22,0)) +
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-27-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2018-9.png" style="display: block; margin: auto;" />
 
 #### 2019
 
@@ -666,13 +651,13 @@ for (s in seq_along(nested$site))
 for (s in seq_along(nested$site))
   print(nested$pctsat2019[[s]] +
             scale_color_distiller(palette = 4, direction = 2, 
-                                 limits = c(80, 125)
+                                 limits = c(80, 135)
                                   ) +
           coord_cartesian(ylim = c(22,0)) +
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-28-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2019-9.png" style="display: block; margin: auto;" />
 
 #### 2020
 
@@ -680,13 +665,13 @@ for (s in seq_along(nested$site))
 for (s in seq_along(nested$site))
   print(nested$pctsat2020[[s]] +
             scale_color_distiller(palette = 4, direction = 2, 
-                                 limits = c(80, 125)
+                                 limits = c(80, 135)
                                   ) +
           coord_cartesian(ylim = c(22,0)) +
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-29-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/psat_2020-9.png" style="display: block; margin: auto;" />
 
 ### Chlorophyll
 
@@ -726,7 +711,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-31-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2017-9.png" style="display: block; margin: auto;" />
 
 #### 2018
 
@@ -740,7 +725,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-32-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2018-9.png" style="display: block; margin: auto;" />
 
 #### 2019
 
@@ -756,7 +741,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-33-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2019-9.png" style="display: block; margin: auto;" />
 
 #### 2020
 
@@ -770,7 +755,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-34-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/chl_2020-9.png" style="display: block; margin: auto;" />
 
 A common pattern is a chlorophyll maximum down a couple of meters.
 
@@ -812,7 +797,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-36-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2017-9.png" style="display: block; margin: auto;" />
 
 #### 2018
 
@@ -826,7 +811,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-37-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2018-9.png" style="display: block; margin: auto;" />
 
 #### 2019
 
@@ -842,7 +827,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-38-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2019-9.png" style="display: block; margin: auto;" />
 
 #### 2020
 
@@ -856,199 +841,7 @@ for (s in seq_along(nested$site))
           guides(color = guide_colorbar(barwidth = unit(0.25, 'cm'))))
 ```
 
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-39-9.png" style="display: block; margin: auto;" />
+<img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-1.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-2.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-3.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-4.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-5.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-6.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-7.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-8.png" style="display: block; margin: auto;" /><img src="DEP_Sonde_Analysis_files/figure-gfm/tur_2020-9.png" style="display: block; margin: auto;" />
 
-Turbidity often tends to be maximum at depth, but differences ar small.
+Turbidity often tends to be maximum at depth, but differences are small.
 Otherwise, it looks like day to day variation is dominant.
-
-# Presumpscort Estuary Series
-
-It might be worth looking at patterns headed down the Presumpscot
-Estuary, as follows:
-
-``` r
-presumpscot_transect <- smaller_data %>%
-  rename(dates = dt) %>%
-  filter(site %in% c('PRV70', 'PR-17', 'PR-28', 'CBPR', 'P6FGG')) %>%
-  filter(year == 2018) %>%
-
-  mutate(site = factor(site, 
-                       levels = c('PRV70', 'PR-17', 
-                                  'PR-28', 'CBPR', 'P6FGG')))
-```
-
-## Dot Plot Examples
-
-### Salinity Plot May
-
-``` r
-presumpscot_transect %>%
-  filter(month == 'May') %>%
-ptdots(.x  = site,  .y  = depth,  .val = salinity, size = 5) + 
-  theme_cbep(base_size = 12) +
-  scale_color_distiller(palette = 3, direction = 2, 
-                                 limits = c(0, 32)
-                                  ) +
-  coord_cartesian(ylim = c(10,0)) +
-          guides(color = guide_colorbar(barwidth = unit(0.25, 'cm')))
-```
-
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-41-1.png" style="display: block; margin: auto;" />
-
-### Salinity Plot September 2018
-
-``` r
-presumpscot_transect %>%
-  filter(month == 'Sep') %>%
-ptdots(.x  = site,  .y  = depth,  .val = salinity, size = 5) + 
-  theme_cbep(base_size = 12) +
-  scale_color_distiller(palette = 3, direction = 2, 
-                                 limits = c(0, 32)
-                                  ) +
-          coord_cartesian(ylim = c(10,0))
-```
-
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-42-1.png" style="display: block; margin: auto;" />
-\#\# Smoothed Plots \#\#\# Temperature, September
-
-``` r
-tmp <- presumpscot_transect %>%
-  filter(month == 'Sep') %>%
-  mutate(sitenum = as.numeric(site) ) %>%
-  select(site, sitenum,depth, temp)
-
-ptsmooth(tmp, .x  = sitenum,  .y  = depth,  .val = temp, 
-         .res_x = 0.01, .res_y = .1,
-         y_grow_grid = FALSE, y_with_zero = FALSE) +
-  
-  scale_fill_distiller(palette = 7, direction = 2, 
-                        #limits = c(6, 9),
-                        na.value = 'gray95',
-                                  ) +
-  theme_cbep(base_size = 12) +
-  theme(legend.position = 'bottom') +
-  guides(fill = guide_colorbar(title = 'Temperature (C)', 
-                               title.position = 'top',
-                               barheight = unit(0.2, 'cm'))) +
-  
-  geom_point(mapping = aes(sitenum, depth), data= tmp,
-             shape = 21, fill = NA, color = 'gray30', size = 3) +
-  scale_x_continuous(breaks = 1:5, 
-                     labels = c('PRV70', 'PR-17', 'PR-28', 'CBPR', 'P6FGG')) +
-  geom_vline(xintercept = 3.05, lty = 2) +
-  geom_text(aes(x = 3.2, y = 7, label = "Martin's Point Bridge"), 
-            angle = 90, size = 3, hjust = 0) +
-  xlab('Site') +
-  ylab('Depth (m)') +
-  ggtitle('September 2018')
-```
-
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-43-1.png" style="display: block; margin: auto;" />
-
-### Salinity, September
-
-The following is not right, since it has filled in areas where we have
-no data, but it is close to what we might want.
-
-``` r
-tmp <- presumpscot_transect %>%
-  filter(month == 'Sep') %>%
-  mutate(sitenum = as.numeric(site) ) %>%
-  select(site, sitenum,depth, salinity)
-
-ptsmooth(tmp, .x  = sitenum,  .y  = depth,  .val = salinity, 
-         .res_x = 0.01, .res_y = .1,
-         y_grow_grid = FALSE, y_with_zero = FALSE) +
-  scale_fill_distiller(palette = 3, direction = 2, 
-                      limits = c(0, 32),
-                      na.value = 'gray95'
-                                  ) +
-  theme_cbep(base_size = 12) +
-  theme(legend.position = 'bottom') +
-  guides(fill = guide_colorbar(title = 'Salinity (PSU)', 
-                               title.position = 'top',
-                               barheight = unit(0.2, 'cm'))) +
-
-  geom_point(mapping = aes(sitenum, depth), data= tmp,
-             shape = 21, fill = NA, color = 'gray70', size = 3) +
-  scale_x_continuous(breaks = 1:5, 
-                     labels = c('PRV70', 'PR-17', 'PR-28', 'CBPR', 'P6FGG')) +
-  geom_vline(xintercept = 3.05, lty = 2) +
-  geom_text(aes(x = 3.25, y = 7, label = "Martin's Point Bridge"), 
-            angle = 90, size = 3, hjust = 0) +
-  xlab('Site') +
-  ylab('Depth (m)') +
-  ggtitle('September 2018')
-```
-
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-44-1.png" style="display: block; margin: auto;" />
-
-### Dissolved Oxygen, September
-
-``` r
-tmp <- presumpscot_transect %>%
-  filter(month == 'Sep') %>%
-  mutate(sitenum = as.numeric(site) ) %>%
-  select(site, sitenum,depth, do)
-
-ptsmooth(tmp, .x  = sitenum,  .y  = depth,  .val = do, 
-         .res_x = 0.01, .res_y = .1,
-         y_grow_grid = FALSE, y_with_zero = FALSE) +
-  scale_fill_distiller(palette = 4, direction = 2, 
-                        limits = c(6, 9),
-                        na.value = 'gray95',
-                                  ) +
-  theme_cbep(base_size = 12) +
-  theme(legend.position = 'bottom') +
-  guides(fill = guide_colorbar(title = 'Dissolved Oxygen (mg/l)', 
-                               title.position = 'top',
-                               barheight = unit(0.2, 'cm'))) +
-  
-  geom_point(mapping = aes(sitenum, depth), data= tmp,
-             shape = 21, fill = NA, color = 'gray30', size = 3) +
-  scale_x_continuous(breaks = 1:5, 
-                     labels = c('PRV70', 'PR-17', 'PR-28', 'CBPR', 'P6FGG')) +
-  geom_vline(xintercept = 3.05, lty = 2) +
-  geom_text(aes(x = 3.25, y = 7, label = "Martin's Point Bridge"), 
-            angle = 90, size = 3, hjust = 0) +
-  xlab('Site') +
-  ylab('Depth (m)') +
-  ggtitle('September 2018')
-```
-
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-45-1.png" style="display: block; margin: auto;" />
-
-### Chlorophyll, September
-
-``` r
-tmp <- presumpscot_transect %>%
-  filter(month == 'Sep') %>%
-  mutate(sitenum = as.numeric(site) ) %>%
-  select(site, sitenum,depth, chl_a_sonde)
-
-ptsmooth(tmp, .x  = sitenum,  .y  = depth,  .val = chl_a_sonde, 
-         .res_x = 0.01, .res_y = .1,
-         y_grow_grid = FALSE, y_with_zero = FALSE) +
-  scale_fill_distiller(palette = 5, direction = 2, 
-                        #limits = c(6, 9),
-                        na.value = 'gray95',
-                                  ) +
-  theme_cbep(base_size = 12) +
-  theme(legend.position = 'bottom') +
-  guides(fill = guide_colorbar(title = 'Chlorophyll A (mg/l)', 
-                               title.position = 'top',
-                               barheight = unit(0.2, 'cm'))) +
-  
-  geom_point(mapping = aes(sitenum, depth), data= tmp,
-             shape = 21, fill = NA, color = 'gray30', size = 3) +
-  scale_x_continuous(breaks = 1:5, 
-                     labels = c('PRV70', 'PR-17', 'PR-28', 'CBPR', 'P6FGG')) +
-  geom_vline(xintercept = 3.05, lty = 2) +
-  geom_text(aes(x = 3.25, y = 7, label = "Martin's Point Bridge"), 
-            angle = 90, size = 3, hjust = 0) +
-  xlab('Site') +
-  ylab('Depth (m)') +
-  ggtitle('September 2018')
-```
-
-<img src="DEP_Sonde_Analysis_files/figure-gfm/unnamed-chunk-46-1.png" style="display: block; margin: auto;" />
