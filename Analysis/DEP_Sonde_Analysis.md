@@ -228,7 +228,7 @@ Certain sites had sonde data collected in only one year, while a handful
 of sites had data collected in three, four or five years.
 
 Year 2017 gives has the highest number of sites tracked, with 2016 not
-far behind. However,at these sites, data was often only collected a few
+far behind. However, at these sites, data was often only collected a few
 times, making seasonal analysis problematic. In 2016, DEP samples
 focused on the Haraseeket and the Fore. In 2017, on the Royal and the
 Cousins.
