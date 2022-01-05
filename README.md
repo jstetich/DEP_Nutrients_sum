@@ -8,7 +8,7 @@ Analysis of data from Maine DEP on nutrients, especially nitrogen, in Casco
 Bay, Maine
 
 # Introduction
-Maine's Department ogf Environmental Protection has been collecting data on
+Maine's Department of Environmental Protection has been collecting data on
 water quality in Casco Bay for many years.  Much of the agency's interest
 focuses on nutrients and related water quality issues because of the direct
 connection between nutrient levels and wastewater treatment discharges, and thus
@@ -60,4 +60,4 @@ graphical layouts. Again, most draft versions of graphics have been omitted for
 clarity.
 
 # Summary of Data Sources
-All data was provided to CBEP by
+All data was provided to CBEP by Maine DEP.
