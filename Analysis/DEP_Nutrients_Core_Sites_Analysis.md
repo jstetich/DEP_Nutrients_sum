@@ -395,7 +395,7 @@ legend('topleft', ncol = 1,
 
 <img src="DEP_Nutrients_Core_Sites_Analysis_files/figure-gfm/ternary_data_quality-1.png" style="display: block; margin: auto;" />
 
-It is not obvious that he data flags here are causing a major change in
+It is not obvious that the data flags here are causing a major change in
 how we might evaluate the data, so we move on.
 
 ##### Colored by Site
@@ -418,7 +418,7 @@ legend('topleft', ncol = 1,
 
 <img src="DEP_Nutrients_Core_Sites_Analysis_files/figure-gfm/ternary_site-1.png" style="display: block; margin: auto;" />
 
-There is clearly pattern there, but hte Viridis color scale is really
+There is clearly pattern there, but the Viridis color scale is really
 more suited for continuous color scale, not a discrete color scale, as
 here.
 
@@ -730,7 +730,7 @@ anova(core_din_gam)
 #> s(yearf) 1.890  2.000 17.212  < 2e-16
 ```
 
-Site remains an important predictor, and os are year and season.
+Site remains an important predictor, and so are year and season.
 
 ``` r
 plot(core_din_gam)
@@ -782,7 +782,7 @@ for our purpose, which is to compare “typical” levels at each site.
 of variation may not be similar at all sites – especially those sites
 strongly influenced by river inputs.)
 
-WE show all three options, to clarify, but only keep the last option for
+We show all three options, to clarify, but only keep the last option for
 further processing.
 
 ``` r
@@ -909,7 +909,7 @@ plt + facet_wrap(~site)
 
 <img src="DEP_Nutrients_Core_Sites_Analysis_files/figure-gfm/tn_histograms-1.png" style="display: block; margin: auto;" />
 
-We note that the PResumpscot River sites exceed both standards more
+We note that the Presumpscot River sites exceed both standards more
 often than other sites.
 
 ### Draft Graphic
@@ -1326,7 +1326,7 @@ plot(core_n2p_gam)
 
 <img src="DEP_Nutrients_Core_Sites_Analysis_files/figure-gfm/view_n2p_gam-1.png" style="display: block; margin: auto;" />
 
-Looks like a linear fit might work just about as well….
+Looks like a linear fit might work just about as well.
 
 ``` r
 oldpar = par(mfrow = c(2,2))
@@ -1422,7 +1422,7 @@ plot(core_n2p_emms_gam_doy) + coord_flip() +
 
 <img src="DEP_Nutrients_Core_Sites_Analysis_files/figure-gfm/plot_n2p_gam_marginals_doy-1.png" style="display: block; margin: auto;" />
 
-On the other hand, the is a strong N to p ratio pattern. Since there is
+On the other hand, there is a strong N to p ratio pattern. Since there is
 only a little seasonal pattern in the N values, the P values must climb
 seasonally.
 
